@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  health-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: health-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - health-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_PATH=/app/data/health.db
+      - LOG_LEVEL=info
+    networks:
+      - health-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  health-data:
+    driver: local
+
+networks:
+  health-network:
+    driver: bridge
