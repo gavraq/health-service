@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
+const path = require('path');
+const cron = require('node-cron');
 require('dotenv').config();
 
 const ParkrunClient = require('./parkrun-client');
@@ -15,6 +17,8 @@ class HealthDataService {
     this.host = process.env.HOST || 'localhost';
     this.database = new HealthDatabase();
     this.parkrunClient = new ParkrunClient();
+    this.scheduledJobs = {};
+    this.lastParkrunSync = null;
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -22,10 +26,20 @@ class HealthDataService {
   }
 
   setupMiddleware() {
-    this.app.use(helmet());
+    this.app.use(helmet({
+      contentSecurityPolicy: false // Allow inline scripts for dashboard
+    }));
     this.app.use(cors());
     this.app.use(express.json({ limit: '50mb' })); // Increase limit for health data payloads
     this.app.use(express.urlencoded({ extended: true }));
+
+    // Serve static files for dashboard
+    this.app.use('/static', express.static(path.join(__dirname, '../static')));
+
+    // Serve dashboard at root
+    this.app.get('/', (req, res) => {
+      res.sendFile(path.join(__dirname, '../static/index.html'));
+    });
 
     // Request logging
     this.app.use((req, res, next) => {
@@ -47,8 +61,40 @@ class HealthDataService {
         services: {
           database: this.database.isHealthy(),
           parkrun: this.parkrunClient.isAuthenticated()
+        },
+        scheduler: {
+          parkrunSync: this.scheduledJobs.parkrunSync ? 'running' : 'stopped',
+          lastParkrunSync: this.lastParkrunSync,
+          nextParkrunSync: 'Every Saturday at 12:00 Europe/London'
         }
       });
+    });
+
+    // Scheduler endpoints
+    this.app.get('/api/scheduler/status', (req, res) => {
+      res.json({
+        success: true,
+        data: {
+          jobs: {
+            parkrunSync: {
+              status: this.scheduledJobs.parkrunSync ? 'running' : 'stopped',
+              schedule: 'Every Saturday at 12:00 (Europe/London)',
+              lastRun: this.lastParkrunSync
+            }
+          }
+        }
+      });
+    });
+
+    this.app.post('/api/scheduler/trigger/parkrun', async (req, res) => {
+      try {
+        logger.info('Manual Parkrun sync triggered via API');
+        const result = await this.syncParkrunData();
+        res.json({ success: true, data: result });
+      } catch (error) {
+        logger.error('Manual Parkrun sync failed', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
     // Parkrun routes
@@ -174,6 +220,18 @@ class HealthDataService {
         res.json({ success: true, data: metrics });
       } catch (error) {
         logger.error(`Failed to fetch Apple Health metrics for ${req.params.type}`, error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Workouts endpoint - returns recent workout sessions
+    this.app.get('/api/apple-health/workouts', async (req, res) => {
+      try {
+        const { days = 30, limit = 50 } = req.query;
+        const workouts = await this.getWorkouts(parseInt(days), parseInt(limit));
+        res.json({ success: true, data: workouts });
+      } catch (error) {
+        logger.error('Failed to fetch workouts', error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -407,6 +465,87 @@ class HealthDataService {
       }
     });
 
+    // ============= Sleep Cycle CSV Data Endpoints =============
+
+    // Import Sleep Cycle CSV data
+    this.app.post('/api/sleep-cycle/import', async (req, res) => {
+      try {
+        const { data } = req.body;
+        if (!data || !Array.isArray(data)) {
+          return res.status(400).json({ success: false, error: 'Data array required' });
+        }
+
+        let imported = 0;
+        let errors = [];
+
+        for (const record of data) {
+          try {
+            await this.database.saveSleepCycleData(record);
+            imported++;
+          } catch (err) {
+            errors.push({ date: record.sleep_date, error: err.message });
+          }
+        }
+
+        logger.info(`Imported ${imported} Sleep Cycle records`);
+        res.json({
+          success: true,
+          imported,
+          errors: errors.length > 0 ? errors : undefined
+        });
+      } catch (error) {
+        logger.error('Failed to import Sleep Cycle data', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get Sleep Cycle data for a specific date
+    this.app.get('/api/sleep-cycle/date/:date', async (req, res) => {
+      try {
+        const { date } = req.params;
+        const data = await this.database.getSleepCycleDataByDate(date);
+        res.json({ success: true, data });
+      } catch (error) {
+        logger.error('Failed to get Sleep Cycle data', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get Sleep Cycle data for a date range
+    this.app.get('/api/sleep-cycle/range', async (req, res) => {
+      try {
+        const { start, end, days = 30 } = req.query;
+        let startDate, endDate;
+
+        if (start && end) {
+          startDate = start;
+          endDate = end;
+        } else {
+          endDate = new Date().toISOString().split('T')[0];
+          const startDateObj = new Date();
+          startDateObj.setDate(startDateObj.getDate() - parseInt(days));
+          startDate = startDateObj.toISOString().split('T')[0];
+        }
+
+        const data = await this.database.getSleepCycleDataRange(startDate, endDate);
+        res.json({ success: true, data });
+      } catch (error) {
+        logger.error('Failed to get Sleep Cycle range data', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get Sleep Cycle statistics
+    this.app.get('/api/sleep-cycle/stats', async (req, res) => {
+      try {
+        const stats = await this.database.getSleepCycleStats();
+        res.json({ success: true, data: stats });
+      } catch (error) {
+        logger.error('Failed to get Sleep Cycle stats', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Future API route placeholders
     this.app.get('/api/fitbit/*', (req, res) => {
       res.status(501).json({ 
@@ -565,8 +704,17 @@ class HealthDataService {
         'exercise-minutes': 'apple_exercise_time',
         'flights-climbed': 'flights_climbed',
         'resting-heart-rate': 'resting_heart_rate',
-        'hrv': 'heart_rate_variability_sdnn',
-        'sleep': 'sleep_analysis'
+        'hrv': 'heart_rate_variability',
+        'sleep': 'sleep_analysis',
+        // New metrics for dashboard v2
+        'vo2-max': 'vo2_max',
+        'stand-hours': 'apple_stand_hour',
+        'stand-time': 'apple_stand_time',
+        'basal-energy': 'basal_energy_burned',
+        'physical-effort': 'physical_effort',
+        // Body composition metrics
+        'body-fat': 'body_fat_percentage',
+        'bmi': 'body_mass_index'
       };
 
       const internalType = metricMap[type];
@@ -581,7 +729,9 @@ class HealthDataService {
         'basal_energy_burned',
         'walking_running_distance',
         'apple_exercise_time',
-        'flights_climbed'
+        'flights_climbed',
+        'apple_stand_hour',
+        'apple_stand_time'
       ];
 
       const isCumulative = cumulativeMetrics.includes(internalType);
@@ -594,12 +744,16 @@ class HealthDataService {
       let startDateStr, endDateStr;
       if (start_date && end_date) {
         startDateStr = start_date;
-        endDateStr = end_date;
+        // Append time to end_date to ensure full day inclusion
+        // (metric_date stored as "2025-11-21 08:00:00 +0000" needs <= "2025-11-21 23:59:59")
+        endDateStr = end_date + ' 23:59:59';
       } else {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
         startDateStr = cutoffDate.toISOString().split('T')[0];
-        endDateStr = new Date().toISOString().split('T')[0];
+        // Append time to endDateStr to ensure full day inclusion
+        // (metric_date stored as "2025-11-21 00:00:00 +0000" needs <= "2025-11-21 23:59:59")
+        endDateStr = new Date().toISOString().split('T')[0] + ' 23:59:59';
       }
 
       // Build WHERE clause for device filtering (step_count needs special handling)
@@ -767,7 +921,13 @@ class HealthDataService {
         results = rows.map(row => {
           // Use converted value for energy metrics
           const useConverted = (internalType === 'active_energy' || internalType === 'basal_energy_burned') && row.total_value_converted;
-          const value = useConverted ? row.total_value_converted : (isCumulative ? row.total_value : row.avg_value);
+
+          // For sleep, use MAX (main sleep session) instead of AVG
+          // Health Auto Export creates multiple records for the same sleep session
+          const isSleep = internalType === 'sleep_analysis';
+          const value = useConverted ? row.total_value_converted :
+                        (isCumulative ? row.total_value :
+                        (isSleep ? row.max_value : row.avg_value));
 
           return {
             period: row.period,
@@ -815,6 +975,117 @@ class HealthDataService {
     }
   }
 
+  async getWorkouts(days, limit) {
+    try {
+      logger.info(`Fetching workouts for ${days} days (limit: ${limit})`);
+
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      const startDateStr = cutoffDate.toISOString().split('T')[0];
+
+      // Query workout metrics (metric_type starts with 'workout_')
+      // metric_date is stored as ISO timestamp string like "2026-01-04 14:27:38 +0000"
+      const query = `
+        SELECT
+          metric_type,
+          metric_date,
+          metric_value,
+          metric_unit,
+          additional_data
+        FROM health_metrics
+        WHERE metric_type LIKE 'workout_%'
+          AND metric_date >= ?
+        ORDER BY metric_date DESC
+        LIMIT ?
+      `;
+
+      const rows = await new Promise((resolve, reject) => {
+        this.database.db.all(query, [startDateStr, limit], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      });
+
+      // Process workouts into structured format
+      const workouts = rows.map(row => {
+        let additional = {};
+        try {
+          additional = row.additional_data ? JSON.parse(row.additional_data) : {};
+        } catch (e) {
+          additional = {};
+        }
+
+        // Extract workout type from metric_type (e.g., 'workout_Outdoor Walk' -> 'Outdoor Walk')
+        const workoutType = row.metric_type.replace('workout_', '').replace(/_/g, ' ');
+
+        // Calculate average pace (min/km) if we have duration and distance
+        const duration = row.metric_value; // seconds
+        const distance = additional.distance?.qty || null;
+        let avgPace = null;
+        let avgPaceFormatted = null;
+        if (duration && distance && distance > 0) {
+          avgPace = (duration / 60) / distance; // minutes per km
+          const paceMin = Math.floor(avgPace);
+          const paceSec = Math.round((avgPace - paceMin) * 60);
+          avgPaceFormatted = `${paceMin}:${paceSec.toString().padStart(2, '0')}`;
+        }
+
+        return {
+          type: workoutType,
+          date: row.metric_date,
+          duration: duration, // Duration in seconds
+          durationFormatted: this.formatDuration(duration),
+          distance: distance,
+          distanceUnit: additional.distance?.units || 'km',
+          avgPace: avgPace,
+          avgPaceFormatted: avgPaceFormatted,
+          calories: additional.activeEnergy?.qty || additional.calories || null,
+          source: additional.source || 'iPhone',
+          startTime: additional.start || null,
+          endTime: additional.end || null
+        };
+      });
+
+      // Calculate summary stats
+      const summary = {
+        totalWorkouts: workouts.length,
+        totalDuration: workouts.reduce((sum, w) => sum + (w.duration || 0), 0),
+        totalDistance: workouts.reduce((sum, w) => sum + (w.distance || 0), 0),
+        totalCalories: workouts.reduce((sum, w) => sum + (w.calories || 0), 0),
+        byType: {}
+      };
+
+      workouts.forEach(w => {
+        if (!summary.byType[w.type]) {
+          summary.byType[w.type] = { count: 0, duration: 0, distance: 0 };
+        }
+        summary.byType[w.type].count++;
+        summary.byType[w.type].duration += w.duration || 0;
+        summary.byType[w.type].distance += w.distance || 0;
+      });
+
+      return {
+        workouts,
+        summary,
+        period: `${days} days`
+      };
+    } catch (error) {
+      logger.error('Failed to get workouts', error);
+      throw error;
+    }
+  }
+
+  formatDuration(seconds) {
+    if (!seconds) return '--:--';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  }
+
   async getHealthSummary(days) {
     // Aggregate health data from multiple sources
     const summary = {
@@ -837,6 +1108,20 @@ class HealthDataService {
       try {
         await this.parkrunClient.initialize();
         logger.info('Parkrun client initialized successfully');
+
+        // Setup Parkrun scheduler - runs every Saturday at 12:00 (noon)
+        // Cron format: minute hour day-of-month month day-of-week
+        this.scheduledJobs.parkrunSync = cron.schedule('0 12 * * 6', async () => {
+          logger.info('Running scheduled Parkrun sync...');
+          await this.syncParkrunData();
+        }, {
+          timezone: 'Europe/London'
+        });
+        logger.info('Parkrun scheduler started: Every Saturday at 12:00 (Europe/London)');
+
+        // Run initial sync on startup
+        logger.info('Running initial Parkrun sync...');
+        await this.syncParkrunData();
       } catch (error) {
         logger.warn('Parkrun client initialization failed - Parkrun endpoints will not be available', error.message);
         // Don't throw - service can still provide Apple Health data
@@ -854,7 +1139,45 @@ class HealthDataService {
     }
   }
 
+  async syncParkrunData() {
+    try {
+      if (!this.parkrunClient.isAuthenticated()) {
+        logger.warn('Parkrun client not authenticated, skipping sync');
+        return { success: false, error: 'Parkrun client not authenticated' };
+      }
+
+      logger.info('Starting Parkrun data sync...');
+
+      // Sync profile
+      const profile = await this.parkrunClient.getProfile();
+      logger.info(`Synced profile for: ${profile.firstName} ${profile.lastName}`);
+
+      // Sync all results (get up to 100)
+      const results = await this.parkrunClient.getResults(100, 0);
+      logger.info(`Synced ${results.length} Parkrun results`);
+
+      this.lastParkrunSync = new Date().toISOString();
+      logger.info(`Parkrun sync completed at ${this.lastParkrunSync}`);
+
+      return {
+        success: true,
+        profile: `${profile.firstName} ${profile.lastName}`,
+        resultsCount: results.length,
+        syncedAt: this.lastParkrunSync
+      };
+    } catch (error) {
+      logger.error('Parkrun sync failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   async stop() {
+    // Stop scheduled jobs
+    if (this.scheduledJobs.parkrunSync) {
+      this.scheduledJobs.parkrunSync.stop();
+      logger.info('Parkrun scheduler stopped');
+    }
+
     if (this.server) {
       this.server.close();
       logger.info('Health Data Service stopped');

@@ -123,6 +123,39 @@ class HealthDatabase {
             created_at TEXT NOT NULL
           )
         `
+      },
+      {
+        name: 'sleep_cycle_data',
+        sql: `
+          CREATE TABLE IF NOT EXISTS sleep_cycle_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sleep_date TEXT NOT NULL UNIQUE,
+            start_time TEXT,
+            end_time TEXT,
+            sleep_quality INTEGER,
+            regularity INTEGER,
+            time_in_bed_sec REAL,
+            time_asleep_sec REAL,
+            time_before_sleep_sec REAL,
+            awake_sec REAL,
+            dream_sec REAL,
+            light_sec REAL,
+            deep_sec REAL,
+            snore_time_sec REAL,
+            movements_per_hour REAL,
+            heart_rate_bpm REAL,
+            respiratory_rate REAL,
+            breathing_disruptions REAL,
+            coughs_per_hour REAL,
+            ambient_noise_db REAL,
+            weather_temp_c REAL,
+            weather_type TEXT,
+            city TEXT,
+            air_pressure_pa REAL,
+            notes TEXT,
+            created_at TEXT NOT NULL
+          )
+        `
       }
     ];
 
@@ -138,7 +171,8 @@ class HealthDatabase {
       'CREATE INDEX IF NOT EXISTS idx_health_metrics_date ON health_metrics(metric_date)',
       'CREATE INDEX IF NOT EXISTS idx_health_metrics_type ON health_metrics(metric_type)',
       'CREATE INDEX IF NOT EXISTS idx_auto_export_timestamp ON apple_health_auto_export(import_timestamp)',
-      'CREATE INDEX IF NOT EXISTS idx_auto_export_status ON apple_health_auto_export(status)'
+      'CREATE INDEX IF NOT EXISTS idx_auto_export_status ON apple_health_auto_export(status)',
+      'CREATE INDEX IF NOT EXISTS idx_sleep_cycle_date ON sleep_cycle_data(sleep_date)'
     ];
 
     for (const indexSql of indexes) {
@@ -553,6 +587,86 @@ class HealthDatabase {
       logger.error('Failed to get Auto Export stats', error);
       throw error;
     }
+  }
+
+  // Sleep Cycle CSV data methods
+  async saveSleepCycleData(record) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const sql = `
+      INSERT OR REPLACE INTO sleep_cycle_data
+      (sleep_date, start_time, end_time, sleep_quality, regularity,
+       time_in_bed_sec, time_asleep_sec, time_before_sleep_sec,
+       awake_sec, dream_sec, light_sec, deep_sec,
+       snore_time_sec, movements_per_hour, heart_rate_bpm,
+       respiratory_rate, breathing_disruptions, coughs_per_hour,
+       ambient_noise_db, weather_temp_c, weather_type, city,
+       air_pressure_pa, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      record.sleep_date,
+      record.start_time,
+      record.end_time,
+      record.sleep_quality,
+      record.regularity,
+      record.time_in_bed_sec,
+      record.time_asleep_sec,
+      record.time_before_sleep_sec,
+      record.awake_sec,
+      record.dream_sec,
+      record.light_sec,
+      record.deep_sec,
+      record.snore_time_sec,
+      record.movements_per_hour,
+      record.heart_rate_bpm,
+      record.respiratory_rate,
+      record.breathing_disruptions,
+      record.coughs_per_hour,
+      record.ambient_noise_db,
+      record.weather_temp_c,
+      record.weather_type,
+      record.city,
+      record.air_pressure_pa,
+      record.notes,
+      new Date().toISOString()
+    ];
+
+    return this.runQuery(sql, values);
+  }
+
+  async getSleepCycleDataByDate(date) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const sql = `SELECT * FROM sleep_cycle_data WHERE sleep_date = ?`;
+    return this.getQuery(sql, [date]);
+  }
+
+  async getSleepCycleDataRange(startDate, endDate) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const sql = `
+      SELECT * FROM sleep_cycle_data
+      WHERE sleep_date >= ? AND sleep_date <= ?
+      ORDER BY sleep_date DESC
+    `;
+    return this.allQuery(sql, [startDate, endDate]);
+  }
+
+  async getSleepCycleStats() {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const sql = `
+      SELECT
+        COUNT(*) as total_records,
+        MIN(sleep_date) as earliest_date,
+        MAX(sleep_date) as latest_date,
+        AVG(sleep_quality) as avg_quality,
+        AVG(time_asleep_sec / 3600.0) as avg_sleep_hours
+      FROM sleep_cycle_data
+    `;
+    return this.getQuery(sql);
   }
 
   isHealthy() {

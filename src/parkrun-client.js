@@ -157,7 +157,11 @@ class ParkrunClient {
             eventId: runData.EventNumber || null,
             finishTime: runData.RunTime || null,
             position: runData.FinishPosition || null,
-            ageGrade: runData.AgeGrading ? Math.round(parseFloat(runData.AgeGrading)) : null,
+            ageGrade: runData.AgeGrading ? (() => {
+              const val = parseFloat(runData.AgeGrading);
+              // API returns decimal (0.57) or percentage (57) - normalize to percentage
+              return Math.round(val < 1 ? val * 100 : val);
+            })() : null,
             isPersonalBest: runData.WasPbRun === "1" || runData.WasPbRun === true,
             totalRunners: null, // Not available in raw data
             ageCategory: runData.AgeCategory || null,
@@ -221,46 +225,52 @@ class ParkrunClient {
 
     try {
       const profile = await this.getProfile();
-      const recentResults = await this.getResults(20, 0);
-      
-      if (recentResults.length === 0) {
+      // Fetch ALL results to get accurate total count (up to 500)
+      const allResults = await this.getResults(500, 0);
+
+      if (allResults.length === 0) {
         return {
-          totalRuns: profile.totalRuns,
+          totalRuns: 0,
           totalVolunteers: profile.totalVolunteers,
-          message: 'No recent results available for statistics'
+          message: 'No results available for statistics'
         };
       }
 
-      // Calculate statistics
-      const validTimes = recentResults
+      // Calculate statistics from ALL results
+      const validTimes = allResults
         .filter(result => result.finishTime && result.finishTime !== 'Unknown')
         .map(result => this.parseTimeToSeconds(result.finishTime));
 
-      const personalBests = recentResults.filter(result => result.isPersonalBest);
-      
+      const personalBests = allResults.filter(result => result.isPersonalBest);
+
+      // Find the personal best (fastest time)
+      const pbTime = validTimes.length > 0 ? Math.min(...validTimes) : null;
+
+      // Calculate average age grade from valid entries only
+      const validAgeGrades = allResults
+        .filter(result => result.ageGrade && result.ageGrade > 0 && result.ageGrade <= 100)
+        .map(result => result.ageGrade);
+
       const stats = {
         profile: {
           name: `${profile.firstName} ${profile.lastName}`,
           club: profile.clubName,
           homeRun: profile.homeRun,
-          totalRuns: profile.totalRuns,
+          // Use actual results count instead of broken profile value
+          totalRuns: allResults.length,
           totalVolunteers: profile.totalVolunteers
         },
         performance: {
-          recentRuns: recentResults.length,
-          personalBestsInPeriod: personalBests.length,
+          totalRuns: allResults.length,
+          personalBestsCount: personalBests.length,
           averageTime: validTimes.length > 0 ? this.formatSecondsToTime(
             validTimes.reduce((a, b) => a + b, 0) / validTimes.length
           ) : null,
-          fastestTime: validTimes.length > 0 ? this.formatSecondsToTime(Math.min(...validTimes)) : null,
-          averagePosition: recentResults.length > 0 ? Math.round(
-            recentResults.reduce((sum, result) => sum + (result.position || 0), 0) / recentResults.length
-          ) : null,
-          averageAgeGrade: recentResults.length > 0 ? Math.round(
-            recentResults.reduce((sum, result) => sum + (result.ageGrade || 0), 0) / recentResults.length
-          ) : null
+          fastestTime: pbTime ? this.formatSecondsToTime(pbTime) : null,
+          averageAgeGrade: validAgeGrades.length > 0 ?
+            Math.round(validAgeGrades.reduce((a, b) => a + b, 0) / validAgeGrades.length) : null
         },
-        venues: this.getVenueStatistics(recentResults),
+        venues: this.getVenueStatistics(allResults),
         lastUpdated: new Date().toISOString()
       };
 

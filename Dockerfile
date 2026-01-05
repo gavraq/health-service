@@ -12,6 +12,9 @@ RUN npm ci --only=production
 COPY src ./src
 COPY config ./config
 
+# Copy static files for dashboard
+COPY static ./static
+
 # Expose API port
 EXPOSE 3001
 

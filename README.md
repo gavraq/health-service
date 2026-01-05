@@ -1,13 +1,48 @@
 # Health Service
 
-REST API for managing Apple Health data with Parkrun integration. Part of Gavin's Personal AI Infrastructure.
+REST API and interactive dashboard for managing Apple Health data with Parkrun integration. Part of Gavin's Personal AI Infrastructure.
 
 ## Overview
 
-The Health Service provides a unified API for:
+The Health Service provides:
+- **Interactive Dashboard**: Tab-based health monitoring at https://health.gavinslater.co.uk
 - **Apple Health Data**: 5.3M+ records from Health Auto Export (2010-2025)
 - **Parkrun Integration**: Performance tracking and statistics
+- **Sleep Cycle Import**: CSV import from Sleep Cycle app
 - **Quantified Self**: Health metrics, trends, and insights with flexible aggregation
+
+## Dashboard (v3.12)
+
+The Health Monitor dashboard provides a comprehensive view of health metrics with a tab-based interface:
+
+### Tabs
+- **Overview**: 5-ring activity display, quick stats (VO2 Max, HRV, Flights, Distance), metric cards
+- **Activity**: 4-ring activity rings, 8 trend charts (Active/Resting Energy, Steps, Distance, Exercise, Flights, Stand Minutes/Hours)
+- **Heart**: Heart rate metrics, HRV trends, VO2 Max tracking
+- **Body**: Weight trend, Body Fat %, BMI charts
+- **Recovery**: Sleep analysis with Sleep Cycle integration
+- **Workouts**: Recent workout history and statistics
+- **Parkrun**: Terminal-style Parkrun statistics display
+
+### Activity Rings
+
+**Overview Tab (5 rings)**:
+| Ring | Color | Goal | Metric |
+|------|-------|------|--------|
+| Steps | Emerald (#10B981) | 10,000 | Daily step count |
+| Move | Red (#EF4444) | 500 kcal | Active energy burned |
+| Exercise | Lime (#84CC16) | 40 min | Exercise minutes |
+| Stand | Cyan (#06B6D4) | 12 hrs | Stand hours |
+| Sleep | Purple (#8B5CF6) | 8 hrs | Sleep duration |
+
+**Activity Tab (4 rings)**: Same as above without Sleep ring.
+
+The center percentage shows average completion across all rings (each capped at 100%).
+
+### Date Controls
+- **Daily Picker**: Select specific dates for daily metrics
+- **Trend Presets**: 7D, 30D, 90D, 1Y quick selection
+- **Custom Range**: Date range picker for trend charts
 
 ## Architecture
 
@@ -134,12 +169,18 @@ GET /api/apple-health/metrics/sleep?days=7
 | Step Count | `steps` | 493,525 | daily |
 | Heart Rate | `heart-rate` | 938,199 | none |
 | Active Energy | `active-energy` | 1,857,143 | daily |
+| Basal Energy | `basal-energy` | - | daily |
 | Walking Distance | `walking-distance` | 615,818 | daily |
 | Body Weight | `body-weight` | 4,128 | none |
+| Body Fat % | `body-fat` | - | none |
+| BMI | `bmi` | - | none |
 | Exercise Minutes | `exercise-minutes` | 133,293 | daily |
 | Flights Climbed | `flights-climbed` | 51,140 | daily |
+| Stand Hours | `stand-hours` | - | daily |
+| Stand Time | `stand-time` | - | daily |
 | Resting Heart Rate | `resting-heart-rate` | 2,491 | none |
 | Heart Rate Variability | `hrv` | 14,654 | none |
+| VO2 Max | `vo2-max` | - | none |
 
 ### Apple Health Auto Export Webhook
 
@@ -168,6 +209,37 @@ Content-Type: application/json
 ```bash
 GET /api/apple-health/auto-export/stats         # Import statistics
 GET /api/apple-health/auto-export/recent?days=7 # Recent imports
+```
+
+### Sleep Cycle Import
+
+Import sleep data from Sleep Cycle app CSV exports:
+
+```bash
+# Import script
+node scripts/import-sleep-cycle.js [csv_path] [api_base_url]
+
+# Example
+node scripts/import-sleep-cycle.js ~/Downloads/sleepdata.csv http://localhost:3001
+
+# API endpoint for bulk import
+POST /api/sleep-cycle/import
+Content-Type: application/json
+
+{
+  "data": [
+    {
+      "sleep_date": "2025-01-04",
+      "start_time": "2025-01-04 23:30:00",
+      "end_time": "2025-01-05 07:15:00",
+      "sleep_quality": 85,
+      "time_asleep_sec": 25200,
+      "deep_sec": 5400,
+      "light_sec": 12600,
+      "dream_sec": 7200
+    }
+  ]
+}
 ```
 
 ### Parkrun Endpoints
@@ -252,6 +324,13 @@ This prevents double-counting when both devices record steps simultaneously.
 
 ---
 
-**Version**: 2.0
-**Last Updated**: 2025-10-31
-**Changes**: Added comprehensive aggregation support, updated API documentation, clarified integration patterns
+**Version**: 3.12
+**Last Updated**: 2026-01-05
+**Changes**:
+- Dashboard V3 with 7-tab interface (Overview, Activity, Heart, Body, Recovery, Workouts, Parkrun)
+- 5-ring activity display on Overview (Steps, Move, Exercise, Stand, Sleep)
+- 4-ring activity display on Activity tab
+- Body composition tracking (Body Fat %, BMI charts)
+- Sleep Cycle CSV import integration
+- Date picker controls for daily and trend views
+- New metrics: basal-energy, body-fat, bmi, stand-hours, stand-time, vo2-max

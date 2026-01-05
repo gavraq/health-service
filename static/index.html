@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <link rel="stylesheet" href="/static/css/styles.css?v=3.8">
+</head>
+<body>
+    <!-- Ambient Background -->
+    <div class="ambient-bg">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#heartGradient)"/>
+                        <defs>
+                            <linearGradient id="heartGradient" x1="2" y1="3" x2="22" y2="21">
+                                <stop offset="0%" stop-color="#EF4444"/>
+                                <stop offset="100%" stop-color="#F87171"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <span class="logo-text">Health Monitor</span>
+                </div>
+                <div class="header-subtitle">Biometric Telemetry Dashboard v3.12</div>
+            </div>
+            <div class="header-right">
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">API</span>
+                        <span class="led led-healthy" id="led-api"></span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">DB</span>
+                        <span class="led led-healthy" id="led-db"></span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">SYNC</span>
+                        <span class="led led-healthy" id="led-sync"></span>
+                    </div>
+                </div>
+                <div class="last-sync">
+                    <span class="sync-label">Last Sync</span>
+                    <span class="sync-time" id="sync-time">--:--</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-navigation">
+            <div class="tab-list">
+                <button class="tab-btn active" data-tab="overview">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7" rx="1"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1"/>
+                        <rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                    <span>Overview</span>
+                </button>
+                <button class="tab-btn" data-tab="activity">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13.5 5.5C14.5 5.5 15.5 4.6 15.5 3.5C15.5 2.4 14.6 1.5 13.5 1.5C12.4 1.5 11.5 2.4 11.5 3.5C11.5 4.6 12.4 5.5 13.5 5.5Z"/>
+                        <path d="M9.89 19.38L10.89 15L13 17V23H15V15.5L12.89 13.5L13.5 10.5C14.79 12 16.79 13 19 13V11C17.09 11 15.5 10 14.69 8.6L13.69 7C13.29 6.4 12.69 6 12 6C11.69 6 11.5 6.1 11.19 6.2L6 8.5V13H8V9.6L9.79 8.9L8.19 17L3.29 16L2.89 18L9.89 19.38Z"/>
+                    </svg>
+                    <span>Activity</span>
+                </button>
+                <button class="tab-btn" data-tab="heart">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                    <span>Heart</span>
+                </button>
+                <button class="tab-btn" data-tab="body">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3C14.21 3 16 4.79 16 7C16 8.5 15.2 9.77 14 10.46V12H16V14H14V22H10V14H8V12H10V10.46C8.8 9.77 8 8.5 8 7C8 4.79 9.79 3 12 3Z"/>
+                    </svg>
+                    <span>Body</span>
+                </button>
+                <button class="tab-btn" data-tab="recovery">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                    </svg>
+                    <span>Recovery</span>
+                </button>
+                <button class="tab-btn" data-tab="workouts">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17.5 6.5L6.5 17.5M6.5 6.5l11 11M3 12h3M18 12h3M12 3v3M12 18v3"/>
+                    </svg>
+                    <span>Workouts</span>
+                </button>
+                <button class="tab-btn" data-tab="parkrun">
+                    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 17L10 11L13 14L20 7"/>
+                        <path d="M4 17V7M4 17H14"/>
+                    </svg>
+                    <span>Parkrun</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Global Date Controls -->
+        <div class="date-controls" id="date-controls">
+            <!-- Daily Date Picker (for metric cards) -->
+            <div class="control-group">
+                <span class="control-label">Daily:</span>
+                <div class="daily-picker" id="daily-picker">
+                    <button class="date-nav-btn" id="prev-day" title="Previous Day">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 18l-6-6 6-6"/>
+                        </svg>
+                    </button>
+                    <input type="date" class="date-input" id="daily-date">
+                    <button class="date-nav-btn" id="next-day" title="Next Day">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                    </button>
+                    <button class="today-btn" id="today-btn">Today</button>
+                </div>
+            </div>
+            <div class="control-separator"></div>
+            <!-- Trend Range (for charts) -->
+            <div class="control-group" id="trend-controls-group">
+                <span class="control-label">Trends:</span>
+                <div class="trend-controls">
+                    <div class="trend-presets" id="trend-presets">
+                        <button class="preset-btn active" data-days="7">7D</button>
+                        <button class="preset-btn" data-days="30">30D</button>
+                        <button class="preset-btn" data-days="90">90D</button>
+                        <button class="preset-btn" data-days="365">1Y</button>
+                    </div>
+                    <div class="custom-range" id="custom-range">
+                        <input type="date" class="date-input date-input-sm" id="range-from" title="From date">
+                        <span class="range-sep">→</span>
+                        <input type="date" class="date-input date-input-sm" id="range-to" title="To date">
+                        <button class="apply-btn" id="apply-range">Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content-wrapper">
+            <!-- ==================== OVERVIEW TAB ==================== -->
+            <section class="tab-content active" id="tab-overview">
+                <!-- Hero Section -->
+                <div class="hero-section">
+                    <!-- Activity Ring (5 rings: Steps, Move, Exercise, Stand, Sleep) -->
+                    <div class="activity-ring-card glass-card">
+                        <div class="card-header">
+                            <span class="card-label">Daily Activity</span>
+                            <span class="card-badge" id="ring-date">Today</span>
+                        </div>
+                        <div class="activity-ring-container">
+                            <svg class="activity-ring" viewBox="0 0 200 200">
+                                <!-- Background rings (5 rings) -->
+                                <circle cx="100" cy="100" r="90" fill="none" stroke="#1a472a" stroke-width="12" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="74" fill="none" stroke="#4a1515" stroke-width="12" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="58" fill="none" stroke="#3d4a15" stroke-width="12" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="42" fill="none" stroke="#153d4a" stroke-width="12" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="26" fill="none" stroke="#2d1a4a" stroke-width="12" opacity="0.3"/>
+
+                                <!-- Progress rings -->
+                                <circle id="overview-ring-steps" cx="100" cy="100" r="90" fill="none" stroke="#10B981" stroke-width="12" stroke-linecap="round" stroke-dasharray="565.5" stroke-dashoffset="565.5" transform="rotate(-90 100 100)"/>
+                                <circle id="overview-ring-move" cx="100" cy="100" r="74" fill="none" stroke="#EF4444" stroke-width="12" stroke-linecap="round" stroke-dasharray="465.0" stroke-dashoffset="465.0" transform="rotate(-90 100 100)"/>
+                                <circle id="overview-ring-exercise" cx="100" cy="100" r="58" fill="none" stroke="#84CC16" stroke-width="12" stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="364.4" transform="rotate(-90 100 100)"/>
+                                <circle id="overview-ring-stand" cx="100" cy="100" r="42" fill="none" stroke="#06B6D4" stroke-width="12" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="263.9" transform="rotate(-90 100 100)"/>
+                                <circle id="overview-ring-sleep" cx="100" cy="100" r="26" fill="none" stroke="#8B5CF6" stroke-width="12" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="163.4" transform="rotate(-90 100 100)"/>
+                            </svg>
+                            <div class="ring-center">
+                                <span class="ring-percent" id="ring-overall">--</span>
+                                <span class="ring-percent-label">Complete</span>
+                            </div>
+                        </div>
+                        <div class="ring-legend ring-legend-5">
+                            <div class="legend-item">
+                                <span class="legend-dot legend-steps"></span>
+                                <span class="legend-label">Steps</span>
+                                <span class="legend-value" id="legend-steps">--/10K</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot legend-move"></span>
+                                <span class="legend-label">Move</span>
+                                <span class="legend-value" id="legend-move">--/500</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot legend-exercise"></span>
+                                <span class="legend-label">Exercise</span>
+                                <span class="legend-value" id="legend-exercise">--/40m</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot legend-stand"></span>
+                                <span class="legend-label">Stand</span>
+                                <span class="legend-value" id="legend-stand">--/12h</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot legend-sleep"></span>
+                                <span class="legend-label">Sleep</span>
+                                <span class="legend-value" id="legend-sleep">--/8h</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metric Cards -->
+                    <div class="metrics-grid">
+                        <div class="metric-card glass-card metric-steps">
+                            <div class="metric-icon">
+                                <svg viewBox="0 0 24 24" fill="none">
+                                    <path d="M13.5 5.5C14.5 5.5 15.5 4.6 15.5 3.5C15.5 2.4 14.6 1.5 13.5 1.5C12.4 1.5 11.5 2.4 11.5 3.5C11.5 4.6 12.4 5.5 13.5 5.5Z" fill="currentColor"/>
+                                    <path d="M9.89 19.38L10.89 15L13 17V23H15V15.5L12.89 13.5L13.5 10.5C14.79 12 16.79 13 19 13V11C17.09 11 15.5 10 14.69 8.6L13.69 7C13.29 6.4 12.69 6 12 6C11.69 6 11.5 6.1 11.19 6.2L6 8.5V13H8V9.6L9.79 8.9L8.19 17L3.29 16L2.89 18L9.89 19.38Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Steps Today</span>
+                                <div class="metric-value-row">
+                                    <span class="metric-value" id="metric-steps">--</span>
+                                    <span class="metric-goal">/10,000</span>
+                                </div>
+                                <div class="metric-progress">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill progress-steps" id="progress-steps"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card metric-active">
+                            <div class="metric-icon">
+                                <svg viewBox="0 0 24 24" fill="none">
+                                    <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Active Minutes</span>
+                                <div class="metric-value-row">
+                                    <span class="metric-value" id="metric-active">--</span>
+                                    <span class="metric-unit">min</span>
+                                </div>
+                                <span class="metric-subtitle">Goal: 30 min</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card metric-weight">
+                            <div class="metric-icon">
+                                <svg viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 3C14.21 3 16 4.79 16 7C16 8.5 15.2 9.77 14 10.46V12H16V14H14V22H10V14H8V12H10V10.46C8.8 9.77 8 8.5 8 7C8 4.79 9.79 3 12 3ZM12 5C10.9 5 10 5.9 10 7C10 8.1 10.9 9 12 9C13.1 9 14 8.1 14 7C14 5.9 13.1 5 12 5Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Weight</span>
+                                <div class="metric-value-row">
+                                    <span class="metric-value" id="metric-weight">--</span>
+                                    <span class="metric-unit">lbs</span>
+                                    <span class="metric-trend" id="weight-trend">
+                                        <svg class="trend-icon" viewBox="0 0 24 24" fill="none">
+                                            <path d="M7 14l5-5 5 5H7z" fill="currentColor"/>
+                                        </svg>
+                                    </span>
+                                </div>
+                                <span class="metric-subtitle">Target: 170 lbs</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card metric-hr">
+                            <div class="metric-icon pulse-icon">
+                                <svg viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Resting HR</span>
+                                <div class="metric-value-row">
+                                    <span class="metric-value" id="metric-hr">--</span>
+                                    <span class="metric-unit">bpm</span>
+                                    <span class="metric-trend trend-good" id="hr-trend">
+                                        <svg class="trend-icon" viewBox="0 0 24 24" fill="none">
+                                            <path d="M7 10l5 5 5-5H7z" fill="currentColor"/>
+                                        </svg>
+                                    </span>
+                                </div>
+                                <span class="metric-subtitle">Avg last 7 days</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats Row -->
+                <div class="quick-stats-row">
+                    <div class="quick-stat glass-card">
+                        <span class="quick-stat-label">VO2 Max</span>
+                        <span class="quick-stat-value" id="quick-vo2max">--</span>
+                        <span class="quick-stat-unit">mL/kg/min</span>
+                    </div>
+                    <div class="quick-stat glass-card">
+                        <span class="quick-stat-label">HRV</span>
+                        <span class="quick-stat-value" id="quick-hrv">--</span>
+                        <span class="quick-stat-unit">ms</span>
+                    </div>
+                    <div class="quick-stat glass-card">
+                        <span class="quick-stat-label">Flights</span>
+                        <span class="quick-stat-value" id="quick-flights">--</span>
+                        <span class="quick-stat-unit">floors</span>
+                    </div>
+                    <div class="quick-stat glass-card">
+                        <span class="quick-stat-label">Distance</span>
+                        <span class="quick-stat-value" id="quick-distance">--</span>
+                        <span class="quick-stat-unit">km</span>
+                    </div>
+                </div>
+
+                <!-- Overview Trends -->
+                <div class="charts-section">
+                    <div class="section-header">
+                        <h2 class="section-title">Trends</h2>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Steps Trend</span>
+                                <span class="chart-avg" id="overview-steps-avg">Avg: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="overviewStepsChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Weight Trend</span>
+                                <span class="chart-avg" id="overview-weight-current">Current: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="overviewWeightChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== ACTIVITY TAB ==================== -->
+            <section class="tab-content" id="tab-activity">
+                <!-- Activity Rings Section (Daily) -->
+                <div class="activity-rings-section glass-card">
+                    <h3 class="section-title">Activity Rings</h3>
+                    <div class="activity-rings-content">
+                        <!-- 4-Ring SVG -->
+                        <div class="activity-rings-visual">
+                            <svg class="activity-rings-svg" viewBox="0 0 200 200">
+                                <!-- Background rings -->
+                                <circle cx="100" cy="100" r="90" fill="none" stroke="#1a472a" stroke-width="14" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="72" fill="none" stroke="#4a1515" stroke-width="14" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="54" fill="none" stroke="#3d4a15" stroke-width="14" opacity="0.3"/>
+                                <circle cx="100" cy="100" r="36" fill="none" stroke="#153d4a" stroke-width="14" opacity="0.3"/>
+                                <!-- Progress rings -->
+                                <circle id="activity-ring-steps" cx="100" cy="100" r="90" fill="none" stroke="#10B981" stroke-width="14" stroke-linecap="round" stroke-dasharray="565.5" stroke-dashoffset="565.5" transform="rotate(-90 100 100)"/>
+                                <circle id="activity-ring-move" cx="100" cy="100" r="72" fill="none" stroke="#EF4444" stroke-width="14" stroke-linecap="round" stroke-dasharray="452.4" stroke-dashoffset="452.4" transform="rotate(-90 100 100)"/>
+                                <circle id="activity-ring-exercise" cx="100" cy="100" r="54" fill="none" stroke="#84CC16" stroke-width="14" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="339.3" transform="rotate(-90 100 100)"/>
+                                <circle id="activity-ring-stand" cx="100" cy="100" r="36" fill="none" stroke="#06B6D4" stroke-width="14" stroke-linecap="round" stroke-dasharray="226.2" stroke-dashoffset="226.2" transform="rotate(-90 100 100)"/>
+                            </svg>
+                        </div>
+                        <!-- Ring Metrics -->
+                        <div class="activity-rings-metrics">
+                            <div class="ring-metric">
+                                <span class="ring-label">Steps</span>
+                                <span class="ring-value steps-color"><span id="activity-ring-steps-value">--</span>/<span class="ring-goal">10,000</span></span>
+                            </div>
+                            <div class="ring-metric">
+                                <span class="ring-label">Move</span>
+                                <span class="ring-value move-color"><span id="activity-ring-move-value">--</span>/<span class="ring-goal">500</span> <span class="ring-unit">KCAL</span></span>
+                            </div>
+                            <div class="ring-metric">
+                                <span class="ring-label">Exercise</span>
+                                <span class="ring-value exercise-color"><span id="activity-ring-exercise-value">--</span>/<span class="ring-goal">40</span> <span class="ring-unit">MIN</span></span>
+                            </div>
+                            <div class="ring-metric">
+                                <span class="ring-label">Stand</span>
+                                <span class="ring-value stand-color"><span id="activity-ring-stand-value">--</span>/<span class="ring-goal">12</span> <span class="ring-unit">HRS</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trend Charts Section -->
+                <div class="charts-section">
+                    <!-- Row 1: Energy Charts -->
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Active Energy (Move)</span>
+                                <span class="chart-avg" id="active-energy-avg">Avg: -- kcal</span>
+                            </div>
+                            <div class="chart-definition">Energy burned over and above your Resting Energy. Includes walking, household chores, and exercise.</div>
+                            <div class="chart-container">
+                                <canvas id="activeEnergyChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Resting Energy</span>
+                                <span class="chart-avg" id="resting-energy-avg">Avg: -- kcal</span>
+                            </div>
+                            <div class="chart-definition">Energy your body uses each day while minimally active. Total energy = Active + Resting.</div>
+                            <div class="chart-container">
+                                <canvas id="restingEnergyChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Row 2: Steps & Distance -->
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Steps</span>
+                                <span class="chart-avg" id="steps-avg">Avg: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="stepsChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Distance (Walking & Running)</span>
+                                <span class="chart-avg" id="distance-avg">Avg: -- km</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="distanceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Row 3: Exercise & Flights -->
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Exercise Minutes</span>
+                                <span class="chart-avg" id="exercise-avg">Avg: -- min</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="exerciseChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Flights Climbed</span>
+                                <span class="chart-avg" id="flights-avg">Avg: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="flightsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Row 4: Stand Metrics -->
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Stand Minutes</span>
+                                <span class="chart-avg" id="stand-min-avg">Avg: -- min</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="standMinChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Stand Hours</span>
+                                <span class="chart-avg" id="stand-hrs-avg">Avg: -- hrs</span>
+                            </div>
+                            <div class="chart-definition">A stand-hour represents an hour where you stood and moved around for at least 1 minute.</div>
+                            <div class="chart-container">
+                                <canvas id="standHrsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== HEART TAB ==================== -->
+            <section class="tab-content" id="tab-heart">
+                <!-- Heart Health Cards -->
+                <div class="metric-cards-row">
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg heart-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Resting HR</span>
+                            <span class="metric-value-lg" id="heart-resting">--</span>
+                            <span class="metric-unit-lg">bpm</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg hrv-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">HRV</span>
+                            <span class="metric-value-lg" id="heart-hrv">--</span>
+                            <span class="metric-unit-lg">ms</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg vo2-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v20M2 12h20"/>
+                                <circle cx="12" cy="12" r="10"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">VO2 Max</span>
+                            <span class="metric-value-lg" id="heart-vo2">--</span>
+                            <span class="metric-unit-lg">mL/kg/min</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Heart Charts -->
+                <div class="charts-section">
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Heart Rate</span>
+                                <span class="chart-legend">
+                                    <span class="legend-min">Min</span>
+                                    <span class="legend-avg">Avg</span>
+                                    <span class="legend-max">Max</span>
+                                </span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="heartRateChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">HRV Trend</span>
+                                <span class="chart-avg" id="hrv-avg">Avg: -- ms</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="hrvChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Resting HR Trend</span>
+                                <span class="chart-avg" id="resting-hr-avg">Avg: -- bpm</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="restingHrChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">VO2 Max Trend</span>
+                                <span class="chart-avg" id="vo2-avg">Avg: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="vo2Chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== BODY TAB ==================== -->
+            <section class="tab-content" id="tab-body">
+                <!-- Body Metric Cards -->
+                <div class="metric-cards-row">
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg weight-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 3C14.21 3 16 4.79 16 7C16 8.5 15.2 9.77 14 10.46V12H16V14H14V22H10V14H8V12H10V10.46C8.8 9.77 8 8.5 8 7C8 4.79 9.79 3 12 3Z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Weight</span>
+                            <span class="metric-value-lg" id="body-weight">--</span>
+                            <span class="metric-unit-lg">lbs</span>
+                            <span class="metric-target">Target: 170 lbs</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg bodyfat-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Body Fat</span>
+                            <span class="metric-value-lg" id="body-fat-pct">--</span>
+                            <span class="metric-unit-lg">%</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg bmi-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">BMI</span>
+                            <span class="metric-value-lg" id="body-bmi">--</span>
+                            <span class="metric-unit-lg">kg/m²</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Weight Chart (Full Width) -->
+                <div class="weight-section">
+                    <div class="weight-card glass-card">
+                        <div class="chart-header">
+                            <div class="weight-header-left">
+                                <span class="chart-title">Weight Trend</span>
+                                <span class="weight-current">Current: <strong id="current-weight">--</strong> lbs</span>
+                            </div>
+                            <div class="weight-header-right">
+                                <div class="weight-target">
+                                    <span class="target-label">Target</span>
+                                    <span class="target-value">170 lbs</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chart-container chart-container-lg">
+                            <canvas id="weightChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Body Composition Charts -->
+                <div class="charts-section">
+                    <div class="charts-grid">
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Body Fat %</span>
+                                <span class="chart-avg" id="body-fat-avg">Avg: --%</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="bodyFatChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card glass-card">
+                            <div class="chart-header">
+                                <span class="chart-title">BMI</span>
+                                <span class="chart-avg" id="body-bmi-avg">Avg: --</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="bmiChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== RECOVERY TAB ==================== -->
+            <section class="tab-content" id="tab-recovery">
+                <!-- Sleep Cycle Style Hero -->
+                <div class="sleep-hero">
+                    <!-- Quality Ring -->
+                    <div class="sleep-quality-section">
+                        <div class="quality-ring-container">
+                            <svg class="quality-ring" viewBox="0 0 120 120">
+                                <defs>
+                                    <linearGradient id="qualityGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#F97316"/>
+                                        <stop offset="50%" stop-color="#FB923C"/>
+                                        <stop offset="100%" stop-color="#FDBA74"/>
+                                    </linearGradient>
+                                </defs>
+                                <circle class="quality-ring-bg" cx="60" cy="60" r="52" stroke-width="10" fill="none"/>
+                                <circle class="quality-ring-progress" id="quality-ring" cx="60" cy="60" r="52" stroke-width="10" fill="none"
+                                    stroke="url(#qualityGradient)" stroke-linecap="round"
+                                    stroke-dasharray="326.73" stroke-dashoffset="326.73"
+                                    transform="rotate(-90 60 60)"/>
+                            </svg>
+                            <div class="quality-center">
+                                <span class="quality-percent" id="sleep-quality">--</span>
+                                <span class="quality-label">SC Quality</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sleep Times -->
+                    <div class="sleep-times-section">
+                        <div class="sleep-time-row">
+                            <span class="sleep-time-value" id="sleep-inbed">--</span>
+                            <span class="sleep-time-label">In bed</span>
+                        </div>
+                        <div class="sleep-time-row">
+                            <span class="sleep-time-value" id="sleep-total">--</span>
+                            <span class="sleep-time-label">Asleep</span>
+                        </div>
+                        <div class="sleep-schedule">
+                            <span class="schedule-time" id="sleep-start-time">--:--</span>
+                            <span class="schedule-arrow">→</span>
+                            <span class="schedule-time" id="sleep-end-time">--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sleep Stages Visualization -->
+                <div class="sleep-stages-section glass-card">
+                    <div class="stages-header">
+                        <svg class="stages-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                        </svg>
+                        <span class="stages-title">Sleep stages</span>
+                    </div>
+
+                    <!-- Stacked Bar Chart -->
+                    <div class="stages-bar-container">
+                        <div class="stages-bar">
+                            <div class="stage-segment stage-awake" id="bar-awake" style="width: 0%"></div>
+                            <div class="stage-segment stage-rem" id="bar-rem" style="width: 0%"></div>
+                            <div class="stage-segment stage-light" id="bar-light" style="width: 0%"></div>
+                            <div class="stage-segment stage-deep" id="bar-deep" style="width: 0%"></div>
+                        </div>
+                        <div class="stages-time-labels">
+                            <span id="stages-start">--:--</span>
+                            <span id="stages-end">--:--</span>
+                        </div>
+                    </div>
+
+                    <!-- Stage Legend -->
+                    <div class="stages-legend">
+                        <div class="stage-item">
+                            <span class="stage-dot awake"></span>
+                            <span class="stage-name">Awake</span>
+                            <span class="stage-time" id="sleep-awake">--</span>
+                        </div>
+                        <div class="stage-item">
+                            <span class="stage-dot rem"></span>
+                            <span class="stage-name">Dream</span>
+                            <span class="stage-time" id="sleep-rem">--</span>
+                        </div>
+                        <div class="stage-item">
+                            <span class="stage-dot light"></span>
+                            <span class="stage-name">Light</span>
+                            <span class="stage-time" id="sleep-core">--</span>
+                        </div>
+                        <div class="stage-item">
+                            <span class="stage-dot deep"></span>
+                            <span class="stage-name">Deep</span>
+                            <span class="stage-time" id="sleep-deep">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Core Stats Row -->
+                <div class="sleep-stats-row">
+                    <div class="sleep-stat glass-card">
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/>
+                            <path d="M18 9l-5 5-4-4-4 4"/>
+                        </svg>
+                        <div class="stat-content">
+                            <span class="stat-value" id="sleep-efficiency">--%</span>
+                            <span class="stat-label">Efficiency</span>
+                        </div>
+                    </div>
+                    <div class="sleep-stat glass-card">
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                        <div class="stat-content">
+                            <span class="stat-value" id="sleep-latency">--</span>
+                            <span class="stat-label">Asleep after</span>
+                        </div>
+                    </div>
+                    <div class="sleep-stat glass-card">
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 12h16M4 6h16M4 18h16"/>
+                        </svg>
+                        <div class="stat-content">
+                            <span class="stat-value" id="sleep-regularity">--%</span>
+                            <span class="stat-label">Regularity</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sleep Cycle Extended Stats -->
+                <div class="sleep-extended-section glass-card" id="sleep-cycle-section">
+                    <div class="extended-header">
+                        <span class="extended-title">Sleep Cycle Insights</span>
+                        <span class="extended-badge">CSV Data</span>
+                    </div>
+                    <div class="extended-stats-grid">
+                        <div class="extended-stat">
+                            <span class="extended-label">Movements</span>
+                            <span class="extended-value" id="sc-movements">--</span>
+                            <span class="extended-unit">/hour</span>
+                        </div>
+                        <div class="extended-stat">
+                            <span class="extended-label">Snoring</span>
+                            <span class="extended-value" id="sc-snore">--</span>
+                            <span class="extended-unit">min</span>
+                        </div>
+                        <div class="extended-stat">
+                            <span class="extended-label">Breathing Rate</span>
+                            <span class="extended-value" id="sc-respiratory">--</span>
+                            <span class="extended-unit">/min</span>
+                        </div>
+                        <div class="extended-stat">
+                            <span class="extended-label">Disruptions</span>
+                            <span class="extended-value" id="sc-disruptions">--</span>
+                            <span class="extended-unit">/hour</span>
+                        </div>
+                        <div class="extended-stat">
+                            <span class="extended-label">Coughs</span>
+                            <span class="extended-value" id="sc-coughs">--</span>
+                            <span class="extended-unit">/hour</span>
+                        </div>
+                        <div class="extended-stat">
+                            <span class="extended-label">Room Noise</span>
+                            <span class="extended-value" id="sc-noise">--</span>
+                            <span class="extended-unit">dB</span>
+                        </div>
+                    </div>
+                    <div class="extended-environment">
+                        <div class="env-item">
+                            <svg class="env-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                            </svg>
+                            <span class="env-value" id="sc-temp">--</span>
+                        </div>
+                        <div class="env-item">
+                            <svg class="env-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                                <circle cx="12" cy="12" r="4"/>
+                            </svg>
+                            <span class="env-value" id="sc-weather">--</span>
+                        </div>
+                        <div class="env-item">
+                            <svg class="env-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                            <span class="env-value" id="sc-location">--</span>
+                        </div>
+                    </div>
+                    <div class="extended-notes" id="sc-notes-container" style="display: none;">
+                        <span class="notes-label">Notes:</span>
+                        <span class="notes-text" id="sc-notes"></span>
+                    </div>
+                </div>
+
+                <!-- Sleep Trend Chart -->
+                <div class="charts-section">
+                    <div class="chart-card glass-card chart-card-full">
+                        <div class="chart-header">
+                            <span class="chart-title">Sleep Trend</span>
+                            <span class="chart-avg" id="sleep-avg">Avg: --</span>
+                        </div>
+                        <div class="chart-container chart-container-lg">
+                            <canvas id="sleepChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== WORKOUTS TAB ==================== -->
+            <section class="tab-content" id="tab-workouts">
+                <!-- Workout Summary Cards -->
+                <div class="metric-cards-row">
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg workout-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M6.5 6.5h11M6.5 17.5h11M3 12h4M17 12h4M7 6.5v11M17 6.5v11"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Total Workouts</span>
+                            <span class="metric-value-lg" id="workout-count">--</span>
+                            <span class="metric-unit-lg">this period</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg time-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Total Time</span>
+                            <span class="metric-value-lg" id="workout-time">--</span>
+                            <span class="metric-unit-lg">minutes</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg distance-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Total Distance</span>
+                            <span class="metric-value-lg" id="workout-distance">--</span>
+                            <span class="metric-unit-lg">km</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workouts Table -->
+                <div class="workouts-table-section glass-card">
+                    <div class="table-header">
+                        <h3 class="table-title">Recent Workouts</h3>
+                    </div>
+                    <div class="workouts-table-wrapper">
+                        <table class="workouts-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Duration</th>
+                                    <th>Distance</th>
+                                    <th>Pace</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workouts-table-body">
+                                <tr>
+                                    <td colspan="5" class="loading-row">Loading workouts...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== PARKRUN TAB ==================== -->
+            <section class="tab-content" id="tab-parkrun">
+                <!-- Parkrun Terminal -->
+                <div class="terminal glass-card">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons">
+                            <span class="term-btn term-close"></span>
+                            <span class="term-btn term-min"></span>
+                            <span class="term-btn term-max"></span>
+                        </div>
+                        <span class="terminal-title">parkrun_stats.sh</span>
+                        <span class="terminal-status">
+                            <span class="led led-healthy"></span>
+                            Connected
+                        </span>
+                    </div>
+                    <div class="terminal-content" id="terminal-content">
+                        <div class="term-line">
+                            <span class="term-prompt">$</span>
+                            <span class="term-cmd">parkrun --profile</span>
+                        </div>
+                        <div class="term-output" id="parkrun-profile">
+                            Loading profile...
+                        </div>
+                        <div class="term-line">
+                            <span class="term-prompt">$</span>
+                            <span class="term-cmd">parkrun --stats</span>
+                        </div>
+                        <div class="term-output term-stats" id="parkrun-stats">
+                            Loading statistics...
+                        </div>
+                        <div class="term-line">
+                            <span class="term-prompt">$</span>
+                            <span class="term-cmd">parkrun --recent 5</span>
+                        </div>
+                        <div class="term-output term-table" id="parkrun-recent">
+                            Loading recent runs...
+                        </div>
+                        <div class="term-line term-cursor">
+                            <span class="term-prompt">$</span>
+                            <span class="term-input"></span>
+                            <span class="cursor"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parkrun Stats Cards -->
+                <div class="metric-cards-row parkrun-cards">
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg parkrun-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M13.5 5.5C14.5 5.5 15.5 4.6 15.5 3.5C15.5 2.4 14.6 1.5 13.5 1.5C12.4 1.5 11.5 2.4 11.5 3.5C11.5 4.6 12.4 5.5 13.5 5.5Z"/>
+                                <path d="M9.89 19.38L10.89 15L13 17V23H15V15.5L12.89 13.5L13.5 10.5C14.79 12 16.79 13 19 13V11C17.09 11 15.5 10 14.69 8.6L13.69 7C13.29 6.4 12.69 6 12 6C11.69 6 11.5 6.1 11.19 6.2L6 8.5V13H8V9.6L9.79 8.9L8.19 17L3.29 16L2.89 18L9.89 19.38Z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Total Runs</span>
+                            <span class="metric-value-lg" id="parkrun-total-runs">--</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg pb-icon">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2l2.4 7.4h7.6l-6 4.6 2.3 7.4-6.3-4.8-6.3 4.8 2.3-7.4-6-4.6h7.6z"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Personal Best</span>
+                            <span class="metric-value-lg" id="parkrun-pb">--:--</span>
+                        </div>
+                    </div>
+                    <div class="metric-card-lg glass-card">
+                        <div class="metric-icon-lg avg-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 17L10 11L13 14L20 7"/>
+                                <path d="M4 17V7M4 17H14"/>
+                            </svg>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-label-lg">Avg Age Grade</span>
+                            <span class="metric-value-lg" id="parkrun-age-grade">--%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-left">
+                <span class="footer-version">Health Monitor v2.0</span>
+                <span class="footer-sep">|</span>
+                <span class="footer-records" id="total-records">-- records</span>
+            </div>
+            <div class="footer-right">
+                <span class="footer-update">Auto-refresh: 5 min</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/js/dashboard.js?v=3.5"></script>
+</body>
+</html>
