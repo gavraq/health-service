@@ -6,7 +6,7 @@ REST API and interactive dashboard for managing Apple Health data with Parkrun i
 
 The Health Service provides:
 - **Interactive Dashboard**: Tab-based health monitoring at https://health.gavinslater.co.uk
-- **Apple Health Data**: 5.3M+ records from Health Auto Export (2010-2025)
+- **Apple Health Data**: 5.6M+ records from Health Auto Export (2010-2026)
 - **Parkrun Integration**: Performance tracking and statistics
 - **Sleep Cycle Import**: CSV import from Sleep Cycle app
 - **Quantified Self**: Health metrics, trends, and insights with flexible aggregation
@@ -165,22 +165,22 @@ GET /api/apple-health/metrics/sleep?days=7
 
 | Metric Type | API Parameter | Records | Aggregation Default |
 |-------------|---------------|---------|-------------------|
-| Sleep Analysis | `sleep` | 29,931 | daily |
-| Step Count | `steps` | 493,525 | daily |
-| Heart Rate | `heart-rate` | 938,199 | none |
-| Active Energy | `active-energy` | 1,857,143 | daily |
-| Basal Energy | `basal-energy` | - | daily |
-| Walking Distance | `walking-distance` | 615,818 | daily |
-| Body Weight | `body-weight` | 4,128 | none |
-| Body Fat % | `body-fat` | - | none |
-| BMI | `bmi` | - | none |
-| Exercise Minutes | `exercise-minutes` | 133,293 | daily |
-| Flights Climbed | `flights-climbed` | 51,140 | daily |
-| Stand Hours | `stand-hours` | - | daily |
-| Stand Time | `stand-time` | - | daily |
-| Resting Heart Rate | `resting-heart-rate` | 2,491 | none |
-| Heart Rate Variability | `hrv` | 14,654 | none |
-| VO2 Max | `vo2-max` | - | none |
+| Sleep Analysis | `sleep` | 35,191 | daily |
+| Step Count | `steps` | 513,345 | daily |
+| Heart Rate | `heart-rate` | 973,630 | none |
+| Active Energy | `active-energy` | 1,911,767 | daily |
+| Basal Energy | `basal-energy` | 731,444 | daily |
+| Walking Distance | `walking-distance` | 635,576 | daily |
+| Body Weight | `body-weight` | 8,268 | none |
+| Body Fat % | `body-fat` | 7,954 | none |
+| BMI | `bmi` | 8,696 | none |
+| Exercise Minutes | `exercise-minutes` | 138,136 | daily |
+| Flights Climbed | `flights-climbed` | 52,376 | daily |
+| Stand Hours | `stand-hours` | 36,818 | daily |
+| Stand Time | `stand-time` | 137,263 | daily |
+| Resting Heart Rate | `resting-heart-rate` | 2,613 | none |
+| Heart Rate Variability | `hrv` | 15,136 | none |
+| VO2 Max | `vo2-max` | 1,714 | none |
 
 ### Apple Health Auto Export Webhook
 
