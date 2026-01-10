@@ -10,7 +10,7 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - health-data:/app/data
+      - ./data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -24,10 +24,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-
-volumes:
-  health-data:
-    driver: local
 
 networks:
   health-network:
