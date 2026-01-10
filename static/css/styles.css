@@ -67,6 +67,15 @@
     --shadow-glow-activity: 0 0 30px var(--activity-glow);
     --shadow-glow-heart: 0 0 30px var(--heart-glow);
     --shadow-glow-sleep: 0 0 30px var(--sleep-glow);
+
+    /* Parkrun Year in Pixels color levels (slower to faster) */
+    --parkrun-no-run: rgba(71, 85, 105, 0.4);
+    --parkrun-level-1: rgba(16, 185, 129, 0.25);
+    --parkrun-level-2: rgba(16, 185, 129, 0.45);
+    --parkrun-level-3: rgba(16, 185, 129, 0.65);
+    --parkrun-level-4: rgba(16, 185, 129, 0.85);
+    --parkrun-level-5: #10B981;
+    --parkrun-pb: #F59E0B;
 }
 
 /* Reset & Base */
@@ -2221,5 +2230,265 @@ body {
 
     .activity-rings-metrics {
         width: 100%;
+    }
+}
+
+/* =============================================================================
+   Parkrun Year in Pixels
+   ============================================================================= */
+
+.parkrun-year-pixels {
+    margin-top: var(--space-lg);
+    padding: var(--space-xl);
+}
+
+.pixels-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.pixels-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.year-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.year-nav-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-base);
+}
+
+.year-nav-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.year-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.year-nav-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.year-display {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 60px;
+    text-align: center;
+}
+
+/* Legend */
+.pixels-legend {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.legend-scale {
+    display: flex;
+    gap: 2px;
+}
+
+.legend-pixel {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.legend-sep {
+    color: var(--border-subtle);
+    margin: 0 var(--space-xs);
+}
+
+.legend-pb {
+    color: var(--parkrun-pb);
+}
+
+/* Heatmap Grid */
+.pixels-container {
+    overflow-x: auto;
+    padding-bottom: var(--space-sm);
+}
+
+.pixels-loading {
+    text-align: center;
+    color: var(--text-muted);
+    padding: var(--space-xl);
+    font-size: 0.875rem;
+}
+
+.pixels-grid {
+    display: grid;
+    gap: 2px;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.pixels-month-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    height: 16px;
+    display: flex;
+    align-items: flex-end;
+}
+
+.pixels-day-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    height: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.pixel {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--parkrun-no-run);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+}
+
+.pixel:hover {
+    transform: scale(1.3);
+    z-index: 10;
+}
+
+.pixel.today {
+    box-shadow: 0 0 0 2px var(--steps-primary);
+}
+
+/* PB Star indicator */
+.pixel.pb::after {
+    content: '★';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8px;
+    color: var(--parkrun-pb);
+    text-shadow: 0 0 2px rgba(0,0,0,0.5);
+}
+
+/* Time-based intensity levels */
+.pixel.level-1 { background: var(--parkrun-level-1); }
+.pixel.level-2 { background: var(--parkrun-level-2); }
+.pixel.level-3 { background: var(--parkrun-level-3); }
+.pixel.level-4 { background: var(--parkrun-level-4); }
+.pixel.level-5 { background: var(--parkrun-level-5); }
+
+/* Tooltip */
+.pixel-tooltip {
+    position: fixed;
+    background: rgba(15, 23, 42, 0.98);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 10000;
+    white-space: nowrap;
+    box-shadow: var(--shadow-lg);
+}
+
+.pixel-tooltip.visible {
+    opacity: 1;
+}
+
+.pixel-tooltip .tooltip-date {
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.pixel-tooltip .tooltip-time {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--steps-primary);
+}
+
+.pixel-tooltip .tooltip-venue {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+}
+
+.pixel-tooltip .tooltip-pb {
+    color: var(--parkrun-pb);
+    font-weight: 600;
+}
+
+/* Year Summary Stats */
+.pixels-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.summary-stat {
+    text-align: center;
+}
+
+.summary-value {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.summary-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Responsive Year in Pixels */
+@media (max-width: 768px) {
+    .pixels-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .pixels-legend {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .pixels-header {
+        flex-direction: column;
+        gap: var(--space-md);
     }
 }

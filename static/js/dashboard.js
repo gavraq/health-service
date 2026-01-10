@@ -71,6 +71,15 @@ let state = {
     tabDataCache: {}
 };
 
+// Parkrun Year in Pixels state
+let parkrunYearState = {
+    selectedYear: new Date().getFullYear(),
+    allResults: [],
+    resultsByDate: {},
+    historicalPBDates: new Set(), // Dates when a new PB was set
+    initialized: false
+};
+
 // =============================================================================
 // API Functions
 // =============================================================================
@@ -1237,6 +1246,391 @@ async function loadParkrunData() {
     } else {
         recentEl.innerHTML = '<span style="color: var(--text-muted)">No recent runs found</span>';
     }
+
+    // Initialize and load Year in Pixels
+    initParkrunYearPixels();
+    await loadParkrunYearData();
+    renderParkrunPixels(parkrunYearState.selectedYear);
+}
+
+// =============================================================================
+// Parkrun Year in Pixels
+// =============================================================================
+
+async function loadParkrunYearData() {
+    // Fetch all results (up to 500 to cover multiple years)
+    const response = await fetchAPI('/parkrun/results?limit=500');
+    if (!response?.success || !response.data) {
+        console.log('[Year in Pixels] No results data available');
+        return [];
+    }
+
+    parkrunYearState.allResults = response.data;
+    console.log(`[Year in Pixels] Loaded ${response.data.length} total parkrun results`);
+
+    // Build lookup by date
+    parkrunYearState.resultsByDate = {};
+    for (const result of response.data) {
+        if (result.runDate) {
+            parkrunYearState.resultsByDate[result.runDate] = result;
+        }
+    }
+
+    // Calculate historical PBs (each time a new fastest time was set)
+    calculateHistoricalPBs();
+
+    return response.data;
+}
+
+function calculateHistoricalPBs() {
+    parkrunYearState.historicalPBDates = new Set();
+
+    // Sort results by date (oldest first)
+    const sortedResults = [...parkrunYearState.allResults]
+        .filter(r => r.runDate && r.finishTime && r.finishTime !== 'Unknown')
+        .sort((a, b) => new Date(a.runDate) - new Date(b.runDate));
+
+    let fastestSoFar = Infinity;
+
+    for (const result of sortedResults) {
+        const timeSeconds = parseTimeToSecondsLocal(result.finishTime);
+        if (timeSeconds !== null && timeSeconds < fastestSoFar) {
+            // This is a new PB!
+            fastestSoFar = timeSeconds;
+            parkrunYearState.historicalPBDates.add(result.runDate);
+        }
+    }
+
+    console.log(`[Year in Pixels] Found ${parkrunYearState.historicalPBDates.size} historical PBs`);
+}
+
+function getYearResults(year) {
+    return parkrunYearState.allResults.filter(r => {
+        if (!r.runDate) return false;
+        return new Date(r.runDate).getFullYear() === year;
+    });
+}
+
+function calculateTimeLevel(timeSeconds, avgSeconds) {
+    // Calculate how much faster/slower than average
+    // Negative diff = faster, positive = slower
+    const diff = timeSeconds - avgSeconds;
+    const percentDiff = (diff / avgSeconds) * 100;
+
+    // Levels based on performance vs average
+    // Faster than average = higher level (darker green)
+    if (percentDiff <= -10) return 5;      // >10% faster
+    if (percentDiff <= -5) return 4;       // 5-10% faster
+    if (percentDiff <= 0) return 3;        // 0-5% faster
+    if (percentDiff <= 5) return 2;        // 0-5% slower
+    return 1;                              // >5% slower
+}
+
+function parseTimeToSecondsLocal(timeString) {
+    if (!timeString || timeString === 'Unknown') return null;
+    const parts = timeString.split(':');
+    if (parts.length === 2) {
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    } else if (parts.length === 3) {
+        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+    }
+    return null;
+}
+
+function formatSecondsToTimeLocal(seconds) {
+    if (!seconds) return null;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// Format date as YYYY-MM-DD using LOCAL time (not UTC like toISOString)
+function formatDateLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function renderParkrunPixels(year) {
+    const container = document.getElementById('parkrun-pixels-grid');
+    if (!container) return;
+
+    const yearResults = getYearResults(year);
+    console.log(`[Year in Pixels] Rendering ${yearResults.length} runs for ${year}`);
+
+    // Calculate average time for the year (or all-time if no runs this year)
+    let validTimes = yearResults
+        .filter(r => r.finishTime && r.finishTime !== 'Unknown')
+        .map(r => parseTimeToSecondsLocal(r.finishTime))
+        .filter(t => t !== null);
+
+    // If no runs this year, use all-time average for comparison
+    if (validTimes.length === 0) {
+        validTimes = parkrunYearState.allResults
+            .filter(r => r.finishTime && r.finishTime !== 'Unknown')
+            .map(r => parseTimeToSecondsLocal(r.finishTime))
+            .filter(t => t !== null);
+    }
+
+    const avgSeconds = validTimes.length > 0
+        ? validTimes.reduce((a, b) => a + b, 0) / validTimes.length
+        : null;
+
+    // Generate year grid
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Build weeks array
+    const weeks = [];
+    let currentWeek = [];
+
+    // Pad first week with nulls
+    const firstDayOfWeek = yearStart.getDay(); // 0 = Sunday
+    for (let i = 0; i < firstDayOfWeek; i++) {
+        currentWeek.push(null);
+    }
+
+    // Add all days of the year
+    for (let d = new Date(yearStart); d <= yearEnd; d.setDate(d.getDate() + 1)) {
+        currentWeek.push(new Date(d));
+        if (currentWeek.length === 7) {
+            weeks.push(currentWeek);
+            currentWeek = [];
+        }
+    }
+
+    // Pad last week
+    while (currentWeek.length > 0 && currentWeek.length < 7) {
+        currentWeek.push(null);
+    }
+    if (currentWeek.length > 0) {
+        weeks.push(currentWeek);
+    }
+
+    // Month labels
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthPositions = [];
+    let currentMonth = -1;
+    weeks.forEach((week, weekIndex) => {
+        for (const day of week) {
+            if (day) {
+                const month = day.getMonth();
+                if (month !== currentMonth) {
+                    currentMonth = month;
+                    monthPositions.push({ month: months[month], weekIndex });
+                    break;
+                }
+            }
+        }
+    });
+
+    // Build grid HTML
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    let html = `<div class="pixels-grid" style="grid-template-columns: 32px repeat(${weeks.length}, 12px);">`;
+
+    // Month labels row
+    html += '<div></div>'; // Empty cell for day labels column
+    weeks.forEach((_, weekIndex) => {
+        const monthLabel = monthPositions.find(m => m.weekIndex === weekIndex);
+        html += `<div class="pixels-month-label">${monthLabel?.month || ''}</div>`;
+    });
+
+    // Day rows
+    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        // Day label (show every other day like GitHub)
+        const showLabel = dayIndex % 2 === 1;
+        html += `<div class="pixels-day-label" style="visibility: ${showLabel ? 'visible' : 'hidden'}">${dayLabels[dayIndex]}</div>`;
+
+        // Day cells for each week
+        for (let weekIndex = 0; weekIndex < weeks.length; weekIndex++) {
+            const day = weeks[weekIndex][dayIndex];
+
+            if (!day) {
+                html += '<div class="pixel" style="visibility: hidden;"></div>';
+                continue;
+            }
+
+            const dateStr = formatDateLocal(day);
+            const result = parkrunYearState.resultsByDate[dateStr];
+            const isToday = formatDateLocal(day) === formatDateLocal(today);
+
+            let classes = ['pixel'];
+            let dataAttrs = `data-date="${dateStr}"`;
+
+            if (isToday) classes.push('today');
+
+            if (result && result.finishTime && result.finishTime !== 'Unknown') {
+                const timeSeconds = parseTimeToSecondsLocal(result.finishTime);
+                if (timeSeconds && avgSeconds) {
+                    const level = calculateTimeLevel(timeSeconds, avgSeconds);
+                    classes.push(`level-${level}`);
+                } else {
+                    classes.push('level-3'); // Default to middle if can't calculate
+                }
+
+                // Check if this run was a historical PB (new fastest at the time)
+                const isHistoricalPB = parkrunYearState.historicalPBDates.has(dateStr);
+                if (isHistoricalPB) {
+                    classes.push('pb');
+                }
+
+                dataAttrs += ` data-time="${result.finishTime}"`;
+                dataAttrs += ` data-venue="${result.eventName || ''}"`;
+                dataAttrs += ` data-pb="${isHistoricalPB ? 'true' : 'false'}"`;
+                if (result.ageGrade) {
+                    dataAttrs += ` data-ag="${result.ageGrade}"`;
+                }
+            }
+
+            html += `<div class="${classes.join(' ')}" ${dataAttrs}></div>`;
+        }
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Add event listeners for tooltips
+    setupPixelTooltips();
+
+    // Update year summary stats
+    updateYearSummary(yearResults);
+}
+
+function setupPixelTooltips() {
+    // Get or create tooltip at body level to avoid CSS containment issues
+    let tooltip = document.getElementById('pixel-tooltip-global');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'pixel-tooltip-global';
+        tooltip.className = 'pixel-tooltip';
+        document.body.appendChild(tooltip);
+    }
+
+    const pixels = document.querySelectorAll('.pixel[data-date]');
+
+    pixels.forEach(pixel => {
+        pixel.addEventListener('mouseenter', (e) => {
+            const date = pixel.dataset.date;
+            const time = pixel.dataset.time;
+            const venue = pixel.dataset.venue;
+            const isPb = pixel.dataset.pb === 'true';
+            const ageGrade = pixel.dataset.ag;
+
+            const dateObj = new Date(date + 'T12:00:00'); // Add time to avoid timezone issues
+            const formattedDate = dateObj.toLocaleDateString('en-GB', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            });
+
+            let html = `<div class="tooltip-date">${formattedDate}</div>`;
+
+            if (time) {
+                html += `<div class="tooltip-time">${time}${ageGrade ? ` (${ageGrade}% AG)` : ''}</div>`;
+                if (venue) {
+                    html += `<div class="tooltip-venue">${venue}</div>`;
+                }
+                if (isPb) {
+                    html += `<div class="tooltip-pb">★ Personal Best!</div>`;
+                }
+            } else {
+                html += '<div style="color: var(--text-muted)">No run</div>';
+            }
+
+            tooltip.innerHTML = html;
+            tooltip.classList.add('visible');
+
+            // Position tooltip above the pixel
+            const rect = pixel.getBoundingClientRect();
+            tooltip.style.left = `${rect.left + rect.width / 2}px`;
+            tooltip.style.top = `${rect.top - 8}px`;
+            tooltip.style.transform = 'translate(-50%, -100%)';
+        });
+
+        pixel.addEventListener('mouseleave', () => {
+            tooltip.classList.remove('visible');
+        });
+    });
+}
+
+function updateYearSummary(yearResults) {
+    const totalRuns = yearResults.length;
+
+    // Count historical PBs in this year (runs where a new fastest was set)
+    const pbs = yearResults.filter(r => {
+        return r.runDate && parkrunYearState.historicalPBDates.has(r.runDate);
+    }).length;
+
+    const validTimes = yearResults
+        .filter(r => r.finishTime && r.finishTime !== 'Unknown')
+        .map(r => parseTimeToSecondsLocal(r.finishTime))
+        .filter(t => t !== null);
+
+    const avgTime = validTimes.length > 0
+        ? formatSecondsToTimeLocal(validTimes.reduce((a, b) => a + b, 0) / validTimes.length)
+        : '--:--';
+
+    const bestTime = validTimes.length > 0
+        ? formatSecondsToTimeLocal(Math.min(...validTimes))
+        : '--:--';
+
+    updateElement('year-total-runs', totalRuns);
+    updateElement('year-pbs', pbs);
+    updateElement('year-avg-time', avgTime);
+    updateElement('year-best-time', bestTime);
+}
+
+function initParkrunYearPixels() {
+    // Prevent duplicate initialization
+    if (parkrunYearState.initialized) {
+        console.log('[Year in Pixels] Already initialized, updating display only');
+        const yearDisplay = document.getElementById('pixels-year');
+        const nextBtn = document.getElementById('next-year');
+        const currentYear = new Date().getFullYear();
+        if (yearDisplay) yearDisplay.textContent = parkrunYearState.selectedYear;
+        if (nextBtn) nextBtn.disabled = parkrunYearState.selectedYear >= currentYear;
+        return;
+    }
+
+    const prevBtn = document.getElementById('prev-year');
+    const nextBtn = document.getElementById('next-year');
+    const yearDisplay = document.getElementById('pixels-year');
+
+    if (!prevBtn || !nextBtn || !yearDisplay) {
+        console.log('[Year in Pixels] Navigation elements not found');
+        return;
+    }
+
+    const currentYear = new Date().getFullYear();
+    parkrunYearState.selectedYear = currentYear;
+
+    const updateYearNav = () => {
+        yearDisplay.textContent = parkrunYearState.selectedYear;
+        nextBtn.disabled = parkrunYearState.selectedYear >= currentYear;
+    };
+
+    prevBtn.addEventListener('click', () => {
+        parkrunYearState.selectedYear--;
+        updateYearNav();
+        renderParkrunPixels(parkrunYearState.selectedYear);
+    });
+
+    nextBtn.addEventListener('click', () => {
+        if (parkrunYearState.selectedYear < currentYear) {
+            parkrunYearState.selectedYear++;
+            updateYearNav();
+            renderParkrunPixels(parkrunYearState.selectedYear);
+        }
+    });
+
+    updateYearNav();
+    parkrunYearState.initialized = true;
+    console.log('[Year in Pixels] Initialized with year:', parkrunYearState.selectedYear);
 }
 
 // =============================================================================

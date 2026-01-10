@@ -1028,6 +1028,69 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Year in Pixels Section -->
+                <div class="parkrun-year-pixels glass-card">
+                    <div class="pixels-header">
+                        <h3 class="pixels-title">Year in Pixels</h3>
+                        <div class="year-nav">
+                            <button class="year-nav-btn" id="prev-year">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M15 18l-6-6 6-6"/>
+                                </svg>
+                            </button>
+                            <span class="year-display" id="pixels-year">2026</span>
+                            <button class="year-nav-btn" id="next-year">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="pixels-legend">
+                        <span class="legend-label">Slower</span>
+                        <div class="legend-scale">
+                            <div class="legend-pixel" style="background: var(--parkrun-level-1)"></div>
+                            <div class="legend-pixel" style="background: var(--parkrun-level-2)"></div>
+                            <div class="legend-pixel" style="background: var(--parkrun-level-3)"></div>
+                            <div class="legend-pixel" style="background: var(--parkrun-level-4)"></div>
+                            <div class="legend-pixel" style="background: var(--parkrun-level-5)"></div>
+                        </div>
+                        <span class="legend-label">Faster</span>
+                        <span class="legend-sep">|</span>
+                        <span class="legend-pb">★ PB</span>
+                    </div>
+
+                    <!-- Heatmap Grid Container -->
+                    <div class="pixels-container" id="parkrun-pixels-grid">
+                        <div class="pixels-loading">Loading year data...</div>
+                    </div>
+
+                    <!-- Tooltip (hidden by default) -->
+                    <div class="pixel-tooltip" id="pixel-tooltip"></div>
+
+                    <!-- Year Summary Stats -->
+                    <div class="pixels-summary" id="pixels-summary">
+                        <div class="summary-stat">
+                            <span class="summary-value" id="year-total-runs">--</span>
+                            <span class="summary-label">Runs</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="summary-value" id="year-pbs">--</span>
+                            <span class="summary-label">PBs</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="summary-value" id="year-avg-time">--:--</span>
+                            <span class="summary-label">Avg Time</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="summary-value" id="year-best-time">--:--</span>
+                            <span class="summary-label">Best Time</span>
+                        </div>
+                    </div>
+                </div>
             </section>
         </div>
 
