@@ -2085,9 +2085,21 @@ function updateElement(id, value) {
     }
 }
 
+function parseDate(dateStr) {
+    // Safari/iOS cannot parse "2026-02-27 06:21:16 +0000" format.
+    // Normalize to ISO 8601: "2026-02-27T06:21:16+00:00"
+    const normalized = dateStr
+        .replace(/ /, 'T')           // first space: date/time separator
+        .replace(' +', '+')          // space before tz offset
+        .replace(' -', '-')          // space before negative tz offset
+        .replace(/([+-]\d{2})(\d{2})$/, '$1:$2'); // +0000 -> +00:00
+    return new Date(normalized);
+}
+
 function formatDate(dateStr) {
     if (!dateStr) return '--';
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
+    if (isNaN(date.getTime())) return '--';
     return date.toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short',
@@ -2097,7 +2109,8 @@ function formatDate(dateStr) {
 
 function formatDateShort(dateStr) {
     if (!dateStr) return '--';
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
+    if (isNaN(date.getTime())) return '--';
     return date.toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short'
