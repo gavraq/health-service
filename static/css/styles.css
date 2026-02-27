@@ -1621,6 +1621,22 @@ body {
     margin-top: var(--space-xs);
 }
 
+/* ========== Metric Cards Responsive (must come after base definitions) ========== */
+@media (max-width: 1024px) {
+    .metric-cards-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .metric-cards-row.sleep-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 768px) {
+    .metric-cards-row,
+    .metric-cards-row.sleep-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ========== Sleep Stage Indicators ========== */
 .sleep-stage-indicator {
     width: 8px;
