@@ -1404,12 +1404,39 @@ body {
         flex-direction: column;
         align-items: stretch;
         gap: var(--space-md);
+        padding: var(--space-md);
     }
 
-    .daily-picker,
-    .trend-presets,
+    .control-group {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-sm);
+    }
+
+    .control-separator {
+        display: none;
+    }
+
+    .daily-picker {
+        justify-content: center;
+    }
+
+    .trend-controls {
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    .trend-presets {
+        justify-content: center;
+    }
+
     .custom-range {
         justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .date-input-sm {
+        width: 110px;
     }
 
     .quick-stats-row {
