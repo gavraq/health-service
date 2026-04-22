@@ -225,10 +225,17 @@ class HealthDataService {
     });
 
     // Workouts endpoint - returns recent workout sessions
+    // Query params:
+    //   days (default 30) — lookback window
+    //   limit (default 50) — max records
+    //   include (comma-sep) — extras to compute per workout. Supported: "zones"
+    //   max_hr — override for HR zone boundaries (default: DEFAULT_MAX_HR env, or 163)
     this.app.get('/api/apple-health/workouts', async (req, res) => {
       try {
-        const { days = 30, limit = 50 } = req.query;
-        const workouts = await this.getWorkouts(parseInt(days), parseInt(limit));
+        const { days = 30, limit = 50, include = '', max_hr } = req.query;
+        const includeZones = include.split(',').map(s => s.trim()).includes('zones');
+        const maxHr = max_hr ? parseInt(max_hr) : (parseInt(process.env.DEFAULT_MAX_HR) || 163);
+        const workouts = await this.getWorkouts(parseInt(days), parseInt(limit), { includeZones, maxHr });
         res.json({ success: true, data: workouts });
       } catch (error) {
         logger.error('Failed to fetch workouts', error);
@@ -975,9 +982,56 @@ class HealthDataService {
     }
   }
 
-  async getWorkouts(days, limit) {
+  // Compute zone bounds (bpm) for a given max HR.
+  // Zone 1: 50-60%, Zone 2: 60-70%, Zone 3: 70-80%, Zone 4: 80-90%, Zone 5: 90%+
+  static zoneBounds(maxHr) {
+    return [
+      { zone: 'z1', lo: 0.50 * maxHr, hi: 0.60 * maxHr },
+      { zone: 'z2', lo: 0.60 * maxHr, hi: 0.70 * maxHr },
+      { zone: 'z3', lo: 0.70 * maxHr, hi: 0.80 * maxHr },
+      { zone: 'z4', lo: 0.80 * maxHr, hi: 0.90 * maxHr },
+      { zone: 'z5', lo: 0.90 * maxHr, hi: Infinity },
+    ];
+  }
+
+  // Bucket an array of HR readings (bpm) into Z1..Z5 counts using `maxHr`.
+  // Readings below Z1 lower bound are ignored (warm-up / resting noise).
+  computeZoneCounts(hrReadings, maxHr) {
+    const bounds = HealthApiServer.zoneBounds(maxHr);
+    const counts = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+    for (const hr of hrReadings) {
+      if (typeof hr !== 'number' || hr < bounds[0].lo) continue;
+      for (const b of bounds) {
+        if (hr >= b.lo && hr < b.hi) { counts[b.zone]++; break; }
+      }
+    }
+    return counts;
+  }
+
+  // Query all heart-rate readings whose metric_date falls within [start, end].
+  // Dates are compared as ISO-ish strings (SQLite lex-order matches chronological for this format).
+  async getHrInWindow(startDate, endDate) {
+    if (!startDate || !endDate) return [];
+    const query = `
+      SELECT metric_value
+      FROM health_metrics
+      WHERE metric_type = 'heart_rate'
+        AND metric_date >= ?
+        AND metric_date <= ?
+      ORDER BY metric_date ASC
+    `;
+    return new Promise((resolve, reject) => {
+      this.database.db.all(query, [startDate, endDate], (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(r => r.metric_value).filter(v => typeof v === 'number'));
+      });
+    });
+  }
+
+  async getWorkouts(days, limit, opts = {}) {
+    const { includeZones = false, maxHr = 163 } = opts;
     try {
-      logger.info(`Fetching workouts for ${days} days (limit: ${limit})`);
+      logger.info(`Fetching workouts for ${days} days (limit: ${limit})${includeZones ? ` with zones at maxHr=${maxHr}` : ''}`);
 
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -1006,8 +1060,8 @@ class HealthDataService {
         });
       });
 
-      // Process workouts into structured format
-      const workouts = rows.map(row => {
+      // Process workouts into structured format (async so we can join HR for zones)
+      const workouts = await Promise.all(rows.map(async row => {
         let additional = {};
         try {
           additional = row.additional_data ? JSON.parse(row.additional_data) : {};
@@ -1018,9 +1072,28 @@ class HealthDataService {
         // Extract workout type from metric_type (e.g., 'workout_Outdoor Walk' -> 'Outdoor Walk')
         const workoutType = row.metric_type.replace('workout_', '').replace(/_/g, ' ');
 
+        // Extract distance defensively (Auto Export payload uses {qty,units}; older rows may be a bare number)
+        let distance = null;
+        let distanceUnit = 'km';
+        if (typeof additional.distance === 'number') {
+          distance = additional.distance;
+        } else if (additional.distance && typeof additional.distance === 'object') {
+          distance = typeof additional.distance.qty === 'number' ? additional.distance.qty : null;
+          if (additional.distance.units) distanceUnit = additional.distance.units;
+        }
+
+        // Extract calories defensively (shape varies across Auto Export versions)
+        let calories = null;
+        if (typeof additional.calories === 'number') {
+          calories = additional.calories;
+        } else if (additional.calories && typeof additional.calories === 'object' && typeof additional.calories.qty === 'number') {
+          calories = additional.calories.qty;
+        } else if (additional.activeEnergy && typeof additional.activeEnergy.qty === 'number') {
+          calories = additional.activeEnergy.qty;
+        }
+
         // Calculate average pace (min/km) if we have duration and distance
         const duration = row.metric_value; // seconds
-        const distance = additional.distance?.qty || null;
         let avgPace = null;
         let avgPaceFormatted = null;
         if (duration && distance && distance > 0) {
@@ -1030,21 +1103,53 @@ class HealthDataService {
           avgPaceFormatted = `${paceMin}:${paceSec.toString().padStart(2, '0')}`;
         }
 
-        return {
+        const workout = {
           type: workoutType,
-          date: row.metric_date,
-          duration: duration, // Duration in seconds
+          date: row.metric_date, // start of workout (from metric_date column)
+          startTime: row.metric_date,
+          endTime: additional.end || null,
+          duration, // seconds
           durationFormatted: this.formatDuration(duration),
-          distance: distance,
-          distanceUnit: additional.distance?.units || 'km',
-          avgPace: avgPace,
-          avgPaceFormatted: avgPaceFormatted,
-          calories: additional.activeEnergy?.qty || additional.calories || null,
-          source: additional.source || 'iPhone',
-          startTime: additional.start || null,
-          endTime: additional.end || null
+          distance,
+          distanceUnit,
+          avgPace,
+          avgPaceFormatted,
+          calories,
+          source: additional.source || 'iPhone'
         };
-      });
+
+        if (includeZones) {
+          const hrs = await this.getHrInWindow(row.metric_date, additional.end);
+          if (hrs.length > 0) {
+            const sum = hrs.reduce((a, b) => a + b, 0);
+            workout.hr = {
+              avg: Math.round(sum / hrs.length),
+              min: Math.min(...hrs),
+              max: Math.max(...hrs),
+              samples: hrs.length,
+            };
+          } else {
+            workout.hr = null;
+          }
+          const counts = this.computeZoneCounts(hrs, maxHr);
+          const totalCounted = Object.values(counts).reduce((a, b) => a + b, 0);
+          const pct = {};
+          const seconds_approx = {};
+          for (const z of ['z1', 'z2', 'z3', 'z4', 'z5']) {
+            pct[z] = totalCounted > 0 ? Math.round((100 * counts[z]) / totalCounted) : 0;
+            seconds_approx[z] = (totalCounted > 0 && duration) ? Math.round((counts[z] / totalCounted) * duration) : 0;
+          }
+          workout.zones = {
+            max_hr_used: maxHr,
+            samples_counted: totalCounted,
+            samples: counts,
+            pct,
+            seconds_approx
+          };
+        }
+
+        return workout;
+      }));
 
       // Calculate summary stats
       const summary = {
