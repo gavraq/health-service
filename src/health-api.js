@@ -1119,8 +1119,8 @@ class HealthDataService {
             const sum = hrs.reduce((a, b) => a + b, 0);
             workout.hr = {
               avg: Math.round(sum / hrs.length),
-              min: Math.min(...hrs),
-              max: Math.max(...hrs),
+              min: Math.round(Math.min(...hrs)),
+              max: Math.round(Math.max(...hrs)),
               samples: hrs.length,
             };
           } else {
