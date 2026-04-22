@@ -982,22 +982,17 @@ class HealthDataService {
     }
   }
 
-  // Compute zone bounds (bpm) for a given max HR.
+  // Bucket an array of HR readings (bpm) into Z1..Z5 counts using `maxHr`.
   // Zone 1: 50-60%, Zone 2: 60-70%, Zone 3: 70-80%, Zone 4: 80-90%, Zone 5: 90%+
-  static zoneBounds(maxHr) {
-    return [
+  // Readings below Z1 lower bound (50% of max) are ignored as warm-up / resting noise.
+  computeZoneCounts(hrReadings, maxHr) {
+    const bounds = [
       { zone: 'z1', lo: 0.50 * maxHr, hi: 0.60 * maxHr },
       { zone: 'z2', lo: 0.60 * maxHr, hi: 0.70 * maxHr },
       { zone: 'z3', lo: 0.70 * maxHr, hi: 0.80 * maxHr },
       { zone: 'z4', lo: 0.80 * maxHr, hi: 0.90 * maxHr },
       { zone: 'z5', lo: 0.90 * maxHr, hi: Infinity },
     ];
-  }
-
-  // Bucket an array of HR readings (bpm) into Z1..Z5 counts using `maxHr`.
-  // Readings below Z1 lower bound are ignored (warm-up / resting noise).
-  computeZoneCounts(hrReadings, maxHr) {
-    const bounds = HealthApiServer.zoneBounds(maxHr);
     const counts = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
     for (const hr of hrReadings) {
       if (typeof hr !== 'number' || hr < bounds[0].lo) continue;
