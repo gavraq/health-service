@@ -208,11 +208,11 @@ class HealthDataService {
     this.app.get('/api/apple-health/metrics/:type', async (req, res) => {
       try {
         const { type } = req.params;
-        const { days = 30, limit = 100, aggregate, start_date, end_date } = req.query;
+        const { days = 30, limit, aggregate, start_date, end_date } = req.query;
         const metrics = await this.getAppleHealthMetrics(
           type,
           parseInt(days),
-          parseInt(limit),
+          limit ? parseInt(limit) : null,
           aggregate,
           start_date,
           end_date
@@ -746,6 +746,11 @@ class HealthDataService {
       // Determine aggregation level
       // Default: 'daily' for cumulative metrics, 'none' for point-in-time metrics
       const aggregationLevel = aggregate || (isCumulative ? 'daily' : 'none');
+
+      // Row limit: raw samples default to 100 to bound payload size, but
+      // aggregated rows are already bounded by the date range — a blanket 100
+      // silently truncated long trend queries (90D/1Y) to ~100 rows.
+      limit = limit || (aggregationLevel === 'none' ? 100 : 1000000);
 
       // Calculate date range
       let startDateStr, endDateStr;
