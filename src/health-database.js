@@ -560,8 +560,13 @@ class HealthDatabase {
     cutoffDate.setDate(cutoffDate.getDate() - days);
     const cutoffDateStr = cutoffDate.toISOString();
 
+    // Exclude payload_json: the raw export blobs can be tens of MB each and
+    // loading a week of them OOM-kills the Node process.
     const sql = `
-      SELECT * FROM apple_health_auto_export
+      SELECT id, import_timestamp, source, metrics_count, workouts_count,
+             status, error_message, created_at,
+             length(payload_json) as payload_bytes
+      FROM apple_health_auto_export
       WHERE import_timestamp >= ?
       ORDER BY import_timestamp DESC
     `;
