@@ -63,13 +63,13 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Parkrun credentials
+# .env holds HEALTH_INGEST_TOKEN (parkrun ingest) — no parkrun login needed
 
 # Start development server
 npm start
 ```
 
-**Note**: Service will start even without valid Parkrun credentials. Parkrun endpoints will be unavailable but Apple Health endpoints will work.
+**Note**: Parkrun data is populated by an external collector (scrape-and-ingest, see Data Sources → Parkrun); the service itself needs no parkrun credentials. Apple Health endpoints work independently.
 
 ### Production (Pi Docker)
 
@@ -245,9 +245,11 @@ Content-Type: application/json
 ### Parkrun Endpoints
 
 ```bash
-GET  /api/parkrun/stats          # All statistics
-GET  /api/parkrun/results/:year  # Results for specific year
-GET  /api/parkrun/trends         # Performance trends
+GET  /api/parkrun/profile        # Athlete profile
+GET  /api/parkrun/stats          # Rich stats (PB, avg, age-grade, per-year, venues, milestone)
+GET  /api/parkrun/results        # Run history (?limit, ?offset)
+GET  /api/parkrun/results/:year  # Results for a specific year
+POST /api/parkrun/ingest         # Ingest scraped results (token-gated) — used by the collector
 ```
 
 ## Integration with Health Agent
@@ -281,9 +283,13 @@ steps_data = response.json()['data']
 - **Total Records**: 5.3M+ health measurements
 
 ### Parkrun
-- **Data Source**: Parkrun.org API
-- **Authentication**: Username/password via .env file
-- **Data**: Personal performance statistics and results
+- **Data Source**: the public parkrun athlete results page, scraped by an external collector
+  (`collect_parkrun.py`, in the personal-ai-system repo) that POSTs to `/api/parkrun/ingest`.
+  parkrun retired its mobile API (now 403) and added Cloudflare bot-protection, so the old
+  `parkrun.js` client no longer works. The collector runs from a residential IP (where the public
+  pages load) on a weekly schedule; the service reads results from its own database.
+- **Authentication**: shared token (`HEALTH_INGEST_TOKEN`) on the ingest endpoint; no parkrun login.
+- **Data**: full run history + derived stats (PB, average, age-grade, per-year progression, venues, milestone).
 
 ## Database Schema
 
