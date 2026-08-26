@@ -100,7 +100,8 @@ class HealthDataService {
     // Parkrun routes
     this.app.get('/api/parkrun/profile', async (req, res) => {
       try {
-        const profile = await this.parkrunClient.getProfile();
+        const p = await this.database.getParkrunProfile((process.env.PARKRUN_USERNAME || '1366335'));
+        const profile = p ? { firstName: p.first_name, lastName: p.last_name, clubName: p.club_name, homeRun: p.home_run, totalRuns: p.total_runs, totalVolunteers: p.total_volunteers, joinDate: p.join_date } : null;
         res.json({ success: true, data: profile });
       } catch (error) {
         logger.error('Failed to fetch parkrun profile', error);
@@ -110,8 +111,14 @@ class HealthDataService {
 
     this.app.get('/api/parkrun/results', async (req, res) => {
       try {
-        const { limit = 50, offset = 0 } = req.query;
-        const results = await this.parkrunClient.getResults(parseInt(limit), parseInt(offset));
+        const { limit = 500, offset = 0 } = req.query;
+        const rows = await this.database.getParkrunResults((process.env.PARKRUN_USERNAME || '1366335'), parseInt(limit), parseInt(offset));
+        const results = rows.map(r => ({
+          runDate: r.run_date, eventName: r.event_name, eventLocation: r.event_location,
+          finishTime: r.finish_time, position: r.position, ageGrade: r.age_grade,
+          isPersonalBest: !!r.is_personal_best, totalRunners: r.total_runners,
+          ageCategory: r.age_category, genderPosition: r.gender_position, runNumber: r.run_number
+        }));
         res.json({ success: true, data: results });
       } catch (error) {
         logger.error('Failed to fetch parkrun results', error);
@@ -121,10 +128,33 @@ class HealthDataService {
 
     this.app.get('/api/parkrun/stats', async (req, res) => {
       try {
-        const stats = await this.parkrunClient.getStatistics();
+        const stats = await this.computeParkrunStats((process.env.PARKRUN_USERNAME || '1366335'));
         res.json({ success: true, data: stats });
       } catch (error) {
         logger.error('Failed to fetch parkrun statistics', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Ingest scraped parkrun data (from the Mac-side collector; the old API is dead)
+    this.app.post('/api/parkrun/ingest', async (req, res) => {
+      try {
+        const token = req.headers['x-ingest-token'] || '';
+        const expected = process.env.HEALTH_INGEST_TOKEN || '';
+        if (expected && token !== expected) {
+          return res.status(401).json({ success: false, error: 'invalid ingest token' });
+        }
+        const { profile, results } = req.body || {};
+        if (!results || !Array.isArray(results)) {
+          return res.status(400).json({ success: false, error: 'expected { profile, results: [] }' });
+        }
+        const userId = (profile && profile.id) || (process.env.PARKRUN_USERNAME || '1366335');
+        if (profile) await this.database.saveParkrunProfile(profile);
+        await this.database.saveParkrunResults(userId, results);
+        logger.info(`Ingested ${results.length} parkrun results for ${userId}`);
+        res.json({ success: true, data: { ingested: results.length, userId } });
+      } catch (error) {
+        logger.error('Parkrun ingest failed', error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -1242,6 +1272,70 @@ class HealthDataService {
       logger.error('Failed to start Health Data Service', error);
       throw error;
     }
+  }
+
+  async computeParkrunStats(userId) {
+    const runs = await this.database.getParkrunResults(userId, 10000, 0);
+    const profileRow = await this.database.getParkrunProfile(userId);
+    const toSecs = (t) => {
+      if (!t) return null;
+      const p = t.split(':').map(Number);
+      return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
+    };
+    const fmt = (s) => s==null ? null : `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+    const timed = runs.filter(r => r.finish_time && toSecs(r.finish_time) != null);
+    const totalRuns = runs.length;
+    if (totalRuns === 0) return { profile: {}, performance: { totalRuns: 0 }, venues: {}, message: 'No parkrun results available' };
+    let pb = null;
+    for (const r of timed) if (!pb || toSecs(r.finish_time) < toSecs(pb.finish_time)) pb = r;
+    const avgSecs = timed.length ? Math.round(timed.reduce((a,r)=>a+toSecs(r.finish_time),0)/timed.length) : null;
+    const ageGrades = runs.map(r=>r.age_grade).filter(v=>v!=null);
+    const avgAge = ageGrades.length ? Math.round((ageGrades.reduce((a,v)=>a+v,0)/ageGrades.length)*10)/10 : null;
+    const bestAge = ageGrades.length ? Math.round(Math.max(...ageGrades)*10)/10 : null;
+    const venues = {}, byYear = {};
+    for (const r of runs) {
+      venues[r.event_name] = (venues[r.event_name]||0)+1;
+      const yr = (r.run_date||'').slice(0,4);
+      if (yr) {
+        byYear[yr] = byYear[yr] || { runs:0, bestTime:null, bestAgeGrade:0 };
+        byYear[yr].runs++;
+        const s = toSecs(r.finish_time);
+        if (s!=null && (byYear[yr].bestTime==null || s<byYear[yr].bestTime)) byYear[yr].bestTime = s;
+        if (r.age_grade && r.age_grade>byYear[yr].bestAgeGrade) byYear[yr].bestAgeGrade = r.age_grade;
+      }
+    }
+    const years = Object.entries(byYear).sort().map(([year,v]) => ({ year, runs:v.runs, bestTime:fmt(v.bestTime), bestAgeGrade:Math.round(v.bestAgeGrade*10)/10 }));
+    const events = Object.entries(venues).sort((a,b)=>b[1]-a[1]).map(([name,count])=>({name,count}));
+    const clubs = [25,50,100,250,500,1000];
+    const nextClub = clubs.find(c => c>totalRuns) || null;
+    const dates = runs.map(r=>r.run_date).filter(Boolean).sort();
+    return {
+      // shape the existing dashboard reads:
+      profile: {
+        totalRuns,
+        firstName: profileRow ? profileRow.first_name : null,
+        lastName: profileRow ? profileRow.last_name : null,
+        homeRun: profileRow ? profileRow.home_run : (events[0] && events[0].name),
+        totalVolunteers: profileRow ? profileRow.total_volunteers : null,
+      },
+      performance: {
+        totalRuns,
+        fastestTime: pb ? pb.finish_time : null,
+        averageTime: fmt(avgSecs),
+        averageAgeGrade: avgAge,
+        bestAgeGrade: bestAge,
+      },
+      venues,
+      // rich extras for new frontend sections:
+      firstRun: dates[0] || null,
+      latestRun: dates[dates.length-1] || null,
+      homeRun: profileRow ? profileRow.home_run : (events[0] && events[0].name),
+      personalBest: pb ? { time: pb.finish_time, event: pb.event_name, date: pb.run_date } : null,
+      distinctEvents: events.length,
+      events,
+      byYear: years,
+      milestone: { current: totalRuns, next: nextClub, toGo: nextClub ? nextClub-totalRuns : 0 },
+    };
   }
 
   async syncParkrunData() {

@@ -1092,6 +1092,41 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ==================== Records + Milestone ==================== -->
+                <div class="parkrun-insights-grid">
+                    <div class="parkrun-records glass-card">
+                        <h3 class="insights-title">Records</h3>
+                        <div class="records-grid">
+                            <div class="record-item"><span class="record-value" id="rec-pb">--:--</span><span class="record-label">Personal Best</span><span class="record-sub" id="rec-pb-where"></span></div>
+                            <div class="record-item"><span class="record-value" id="rec-best-age">--%</span><span class="record-label">Best Age Grade</span></div>
+                            <div class="record-item"><span class="record-value" id="rec-events">--</span><span class="record-label">Venues Run</span></div>
+                            <div class="record-item"><span class="record-value" id="rec-first">--</span><span class="record-label">First parkrun</span></div>
+                        </div>
+                    </div>
+                    <div class="parkrun-milestone glass-card">
+                        <h3 class="insights-title">Milestone Progress</h3>
+                        <div class="milestone-row">
+                            <span class="milestone-current" id="ms-current">--</span>
+                            <div class="milestone-bar"><div class="milestone-fill" id="ms-fill"></div></div>
+                            <span class="milestone-next" id="ms-next">--</span>
+                        </div>
+                        <div class="milestone-caption" id="ms-caption">Loading...</div>
+                        <div class="milestone-clubs" id="ms-clubs"></div>
+                    </div>
+                </div>
+
+                <!-- ==================== Year-by-Year progression ==================== -->
+                <div class="parkrun-progression glass-card">
+                    <h3 class="insights-title">Year by Year <span class="insights-sub">runs (bar height) &amp; best time / age-grade (shade)</span></h3>
+                    <div class="progression-chart" id="year-progression"><div class="pixels-loading">Loading...</div></div>
+                </div>
+
+                <!-- ==================== parkrun Tourism ==================== -->
+                <div class="parkrun-tourism glass-card">
+                    <h3 class="insights-title">parkrun Tourism <span class="insights-sub" id="tourism-sub"></span></h3>
+                    <div class="venues-list" id="parkrun-venues-list"><div class="pixels-loading">Loading...</div></div>
+                </div>
             </section>
         </div>
 
@@ -1108,6 +1143,6 @@
         </footer>
     </div>
 
-    <script src="/static/js/dashboard.js?v=3.5"></script>
+    <script src="/static/js/dashboard.js?v=3.6"></script>
 </body>
 </html>

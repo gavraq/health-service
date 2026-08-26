@@ -1172,6 +1172,57 @@ function renderWorkoutsTable(workouts) {
 // Parkrun Tab
 // =============================================================================
 
+
+// Parkrun rich insights (records, milestone, year progression, tourism)
+function renderParkrunInsights(data) {
+    if (!data) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const perf = data.performance || {};
+    // Records
+    const pb = data.personalBest || {};
+    set('rec-pb', pb.time || perf.fastestTime || '--:--');
+    set('rec-pb-where', pb.event ? `${pb.event} · ${formatDate(pb.date)}` : '');
+    set('rec-best-age', perf.bestAgeGrade != null ? `${perf.bestAgeGrade}%` : '--%');
+    set('rec-events', data.distinctEvents != null ? data.distinctEvents : '--');
+    set('rec-first', data.firstRun ? formatDate(data.firstRun) : '--');
+    // Milestone
+    const ms = data.milestone || {};
+    const cur = ms.current || 0, next = ms.next;
+    const prev = [0,25,50,100,250,500,1000].filter(c => c <= cur).pop() || 0;
+    const pct = next ? Math.max(2, Math.round(((cur - prev) / (next - prev)) * 100)) : 100;
+    set('ms-current', cur);
+    set('ms-next', next || '∞');
+    const fill = document.getElementById('ms-fill'); if (fill) fill.style.width = pct + '%';
+    set('ms-caption', next ? `${ms.toGo} runs to the ${next} Club` : 'Legend status — 1000 club!');
+    const clubsEl = document.getElementById('ms-clubs');
+    if (clubsEl) clubsEl.innerHTML = [25,50,100,250,500,1000]
+        .map(c => `<span class="club-badge ${cur >= c ? 'achieved' : ''}">${c}</span>`).join('');
+    // Year-by-year progression
+    const yrs = data.byYear || [];
+    const maxRuns = Math.max(...yrs.map(y => y.runs), 1);
+    const prog = document.getElementById('year-progression');
+    if (prog) prog.innerHTML = yrs.map(y => {
+        const shade = 0.35 + (Math.min(y.bestAgeGrade, 70) / 70) * 0.65;
+        return `<div class="yp-col" title="${y.year}: ${y.runs} runs, best ${y.bestTime || '--'}, age-grade ${y.bestAgeGrade}%">
+            <span class="yp-time">${y.bestTime || ''}</span>
+            <div class="yp-bar" style="height:${Math.round(y.runs / maxRuns * 100)}%;opacity:${shade.toFixed(2)}"></div>
+            <span class="yp-year">'${y.year.slice(2)}</span>
+        </div>`;
+    }).join('');
+    // Tourism / venues
+    const evs = data.events || [];
+    const maxC = Math.max(...evs.map(e => e.count), 1);
+    const home = data.homeRun;
+    set('tourism-sub', `${evs.length} venues · ${evs.reduce((a,e)=>a+e.count,0)} runs`);
+    const venEl = document.getElementById('parkrun-venues-list');
+    if (venEl) venEl.innerHTML = evs.map(e => `
+        <div class="venue-row">
+            <span class="venue-name" title="${e.name}">${e.name}${e.name === home ? ' <span class="venue-home">HOME</span>' : ''}</span>
+            <div class="venue-track"><div class="venue-fill" style="width:${Math.max(3, Math.round(e.count / maxC * 100))}%"></div></div>
+            <span class="venue-count">${e.count}</span>
+        </div>`).join('');
+}
+
 async function loadParkrunData() {
     const [profileData, statsData, recentData] = await Promise.all([
         fetchAPI('/parkrun/profile'),
@@ -1191,6 +1242,9 @@ async function loadParkrunData() {
     } else {
         profileEl.innerHTML = '<span style="color: var(--text-muted)">Profile unavailable</span>';
     }
+
+    // Rich insight sections (records, milestone, year progression, tourism)
+    if (statsData?.success) renderParkrunInsights(statsData.data);
 
     // Update stats
     const statsEl = document.getElementById('parkrun-stats');

@@ -251,6 +251,18 @@ class HealthDatabase {
     }
   }
 
+  async getParkrunProfile(userId) {
+    if (!this.isReady) throw new Error('Database not initialized');
+    const sql = `SELECT * FROM parkrun_profile WHERE user_id = ? LIMIT 1`;
+    try {
+      const rows = await this.allQuery(sql, [userId]);
+      return rows[0] || null;
+    } catch (error) {
+      logger.error('Failed to get parkrun profile', error);
+      throw error;
+    }
+  }
+
   async getParkrunResults(userId, limit = 50, offset = 0) {
     if (!this.isReady) throw new Error('Database not initialized');
 

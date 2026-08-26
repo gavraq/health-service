@@ -2535,3 +2535,43 @@ body {
         gap: var(--space-md);
     }
 }
+
+
+/* ========== Parkrun Insights (added 2026-08) ========== */
+.parkrun-insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); margin-top: var(--space-lg); }
+@media (max-width: 720px) { .parkrun-insights-grid { grid-template-columns: 1fr; } }
+.parkrun-records, .parkrun-milestone, .parkrun-progression, .parkrun-tourism { padding: var(--space-lg); margin-top: var(--space-lg); }
+.parkrun-insights-grid > * { margin-top: 0; }
+.insights-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin: 0 0 var(--space-md); letter-spacing: 0.3px; }
+.insights-sub { font-size: 0.72rem; font-weight: 400; color: var(--text-muted); margin-left: 8px; }
+
+.records-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+.record-item { display: flex; flex-direction: column; gap: 2px; }
+.record-value { font-size: 1.5rem; font-weight: 700; color: #10B981; line-height: 1.1; }
+.record-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.record-sub { font-size: 0.68rem; color: var(--text-muted); }
+
+.milestone-row { display: flex; align-items: center; gap: var(--space-md); }
+.milestone-current { font-size: 1.6rem; font-weight: 700; color: #10B981; }
+.milestone-next { font-size: 1rem; font-weight: 600; color: var(--text-muted); }
+.milestone-bar { flex: 1; height: 10px; border-radius: 6px; background: var(--parkrun-no-run); overflow: hidden; }
+.milestone-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--parkrun-level-3), #10B981); transition: width 0.8s ease; }
+.milestone-caption { font-size: 0.8rem; color: var(--text-secondary); margin-top: var(--space-sm); }
+.milestone-clubs { display: flex; gap: 6px; margin-top: var(--space-md); flex-wrap: wrap; }
+.club-badge { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; background: var(--parkrun-no-run); color: var(--text-muted); }
+.club-badge.achieved { background: rgba(16,185,129,0.18); color: #10B981; border: 1px solid rgba(16,185,129,0.35); }
+
+.progression-chart { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 8px; }
+.yp-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+.yp-time { font-size: 0.6rem; color: var(--text-muted); white-space: nowrap; }
+.yp-bar { width: 70%; min-height: 4px; border-radius: 4px 4px 0 0; background: #10B981; transition: height 0.6s ease; }
+.yp-year { font-size: 0.68rem; color: var(--text-secondary); font-weight: 500; }
+
+.venues-list { display: flex; flex-direction: column; gap: 8px; }
+.venue-row { display: grid; grid-template-columns: 150px 1fr 40px; align-items: center; gap: var(--space-md); }
+.venue-name { font-size: 0.82rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.venue-home { font-size: 0.6rem; font-weight: 700; color: #F59E0B; background: rgba(245,158,11,0.15); padding: 1px 5px; border-radius: 4px; margin-left: 4px; }
+.venue-track { height: 8px; border-radius: 5px; background: var(--parkrun-no-run); overflow: hidden; }
+.venue-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--parkrun-level-2), #10B981); transition: width 0.7s ease; }
+.venue-count { font-size: 0.78rem; color: var(--text-secondary); text-align: right; font-weight: 600; }
+@media (max-width: 720px) { .venue-row { grid-template-columns: 110px 1fr 32px; } }
