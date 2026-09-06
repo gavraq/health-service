@@ -3,6 +3,19 @@ const path = require('path');
 const fs = require('fs');
 const logger = require('./logger');
 
+// How long a statement waits for a lock before giving up. A large import can
+// hold the write lock for ~20s, so this needs comfortable headroom.
+const BUSY_TIMEOUT_MS = 60_000;
+
+// How many Auto Export payload bodies to retain. The table doubles as a replay
+// log, but each body is megabytes and the app can re-send the same window many
+// times a day — by 2026-09-06 it held 1,073 rows totalling 3.5 GB, essentially
+// the whole 6.1 GB database. Cap by COUNT, not by age: a time window does not
+// bound size when the export cadence misbehaves, which is exactly what
+// happened (140 imports totalling 2.2 GB on 26 Aug alone). Metadata rows are
+// kept forever — they are tiny, and they are how that problem was diagnosed.
+const AUTO_EXPORT_PAYLOAD_RETENTION = 40;
+
 class HealthDatabase {
   constructor() {
     this.db = null;
@@ -27,6 +40,12 @@ class HealthDatabase {
         }
         logger.info(`Connected to SQLite database: ${this.dbPath}`);
       });
+
+      // Wait for a lock rather than failing on it. Overlapping Auto Export
+      // imports used to abort with SQLITE_BUSY and silently lose the whole
+      // payload — on 2026-09-06 that left heart_rate frozen two days behind
+      // every other metric. Queue instead.
+      this.db.configure('busyTimeout', BUSY_TIMEOUT_MS);
 
       // Create tables
       await this.createTables();
@@ -516,6 +535,14 @@ class HealthDatabase {
       // Log the sync activity
       await this.logSync('health_auto_export', 'success', metricsStored + workoutsStored);
 
+      // Keep the payload table bounded. Never let this fail an import — the
+      // metrics are already committed by this point and are what matters.
+      try {
+        await this.pruneAutoExportPayloads();
+      } catch (pruneError) {
+        logger.warn('Auto Export payload prune failed (import itself succeeded)', pruneError);
+      }
+
       logger.info(`Processed Auto Export data: ${metricsStored} metric data points, ${workoutsStored} workouts`);
 
       return {
@@ -551,6 +578,34 @@ class HealthDatabase {
       await this.logSync('health_auto_export', 'error', 0, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Clear payload bodies outside the most recent AUTO_EXPORT_PAYLOAD_RETENTION
+   * imports. The rows themselves stay — only the multi-megabyte payload_json
+   * column is nulled, so the import history (when, how many metrics, status)
+   * survives in full while the bytes do not.
+   *
+   * Note this reclaims space inside the file for reuse; it does not shrink
+   * health.db on disk. That needs a VACUUM, which takes an exclusive lock and
+   * so belongs in a maintenance window, not in the import path.
+   */
+  async pruneAutoExportPayloads() {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const sql = `
+      UPDATE apple_health_auto_export
+      SET payload_json = NULL
+      WHERE payload_json IS NOT NULL
+        AND id NOT IN (
+          SELECT id FROM apple_health_auto_export ORDER BY id DESC LIMIT ?
+        )
+    `;
+    const result = await this.runQuery(sql, [AUTO_EXPORT_PAYLOAD_RETENTION]);
+    if (result.changes > 0) {
+      logger.info(`Pruned Auto Export payload bodies from ${result.changes} old import(s)`);
+    }
+    return result.changes;
   }
 
   async getRecentAutoExportData(days = 7) {
