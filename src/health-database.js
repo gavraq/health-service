@@ -175,6 +175,40 @@ class HealthDatabase {
             created_at TEXT NOT NULL
           )
         `
+      },
+      {
+        // GPS tracks for outdoor workouts, from Auto Export's route data.
+        //
+        // These are a genuinely independent location source: when OwnTracks
+        // stopped publishing (2-6 Sept 2026) the runs and walks were still
+        // recorded by the Watch, so the tracks survive here even when the
+        // background GPS trail does not.
+        //
+        // One row per workout with the track as a compact JSON array of
+        // [epochSeconds, lat, lon, altitude] tuples, rather than a row per
+        // point: reads are always "give me the whole track for this day", and
+        // 24,000 points a week as individual rows is how databases get fat.
+        // A long run is ~5,700 points, roughly 170 KB stored this way.
+        //
+        // UNIQUE(workout_start, workout_name) matters — the 7-day export
+        // window re-sends the same workouts every 6 hours, so without it each
+        // track would be stored ~28 times a week.
+        name: 'workout_routes',
+        sql: `
+          CREATE TABLE IF NOT EXISTS workout_routes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workout_start TEXT NOT NULL,
+            workout_end TEXT,
+            workout_name TEXT NOT NULL,
+            workout_date TEXT NOT NULL,
+            point_count INTEGER NOT NULL,
+            distance_km REAL,
+            min_lat REAL, min_lon REAL, max_lat REAL, max_lon REAL,
+            track_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(workout_start, workout_name)
+          )
+        `
       }
     ];
 
@@ -191,7 +225,8 @@ class HealthDatabase {
       'CREATE INDEX IF NOT EXISTS idx_health_metrics_type ON health_metrics(metric_type)',
       'CREATE INDEX IF NOT EXISTS idx_auto_export_timestamp ON apple_health_auto_export(import_timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_auto_export_status ON apple_health_auto_export(status)',
-      'CREATE INDEX IF NOT EXISTS idx_sleep_cycle_date ON sleep_cycle_data(sleep_date)'
+      'CREATE INDEX IF NOT EXISTS idx_sleep_cycle_date ON sleep_cycle_data(sleep_date)',
+      'CREATE INDEX IF NOT EXISTS idx_workout_routes_date ON workout_routes(workout_date)'
     ];
 
     for (const indexSql of indexes) {
@@ -564,6 +599,8 @@ class HealthDatabase {
               source: workout.source || 'iPhone'
             }
           );
+          // Route points are dropped by saveHealthMetric — keep them.
+          await this.saveWorkoutRoute(workout);
           workoutsStored++;
         }
       }
@@ -599,6 +636,97 @@ class HealthDatabase {
   async saveAutoExportData(payload) {
     const recorded = await this.recordAutoExportImport(payload);
     return this.processAutoExportImport(recorded.importId, payload);
+  }
+
+  /**
+   * Store a workout's GPS track, if it has one.
+   *
+   * Silently does nothing for indoor workouts and for outdoor ones exported
+   * before "Include Route Data" was enabled — both legitimately have no route.
+   *
+   * INSERT OR REPLACE against the UNIQUE(workout_start, workout_name) key, so
+   * re-exports of the same workout overwrite rather than accumulate. Replace
+   * rather than ignore because a later export can carry a more complete track
+   * (a workout exported mid-session has only the points recorded so far).
+   */
+  async saveWorkoutRoute(workout) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const route = Array.isArray(workout.route) ? workout.route : null;
+    if (!route || route.length === 0) return 0;
+
+    const track = [];
+    let minLat = Infinity, minLon = Infinity, maxLat = -Infinity, maxLon = -Infinity;
+
+    for (const p of route) {
+      const lat = Number(p.latitude);
+      const lon = Number(p.longitude);
+      const ts = Date.parse(p.timestamp);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Number.isNaN(ts)) continue;
+      // Six decimal places is ~0.1m — far finer than GPS, and it keeps the
+      // stored track roughly half the size of full float precision.
+      track.push([
+        Math.round(ts / 1000),
+        Number(lat.toFixed(6)),
+        Number(lon.toFixed(6)),
+        Number.isFinite(Number(p.altitude)) ? Math.round(Number(p.altitude)) : null
+      ]);
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    }
+
+    if (track.length === 0) return 0;
+    track.sort((a, b) => a[0] - b[0]);
+
+    // workout.start looks like "2026-09-04 06:40:00 +0100"; the date prefix is
+    // what the location pipeline queries on.
+    const workoutDate = String(workout.start || '').slice(0, 10);
+    const distanceKm = typeof workout.distance?.qty === 'number'
+      ? workout.distance.qty
+      : (typeof workout.distance === 'number' ? workout.distance : null);
+
+    await this.runQuery(
+      `INSERT OR REPLACE INTO workout_routes
+       (workout_start, workout_end, workout_name, workout_date, point_count,
+        distance_km, min_lat, min_lon, max_lat, max_lon, track_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        workout.start, workout.end, workout.name, workoutDate, track.length,
+        distanceKm, minLat, minLon, maxLat, maxLon,
+        JSON.stringify(track), new Date().toISOString()
+      ]
+    );
+
+    logger.info(`Stored route for ${workout.name} ${workout.start}: ${track.length} points`);
+    return track.length;
+  }
+
+  /**
+   * Workout tracks for a date. `includeTrack` false returns just the summary
+   * rows, which is all a listing needs — the tracks are large.
+   */
+  async getWorkoutRoutes(date, includeTrack = true) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const cols = 'workout_start, workout_end, workout_name, workout_date, point_count, ' +
+      'distance_km, min_lat, min_lon, max_lat, max_lon' + (includeTrack ? ', track_json' : '');
+    const rows = await this.allQuery(
+      `SELECT ${cols} FROM workout_routes WHERE workout_date = ? ORDER BY workout_start`,
+      [date]
+    );
+    return rows.map((r) => {
+      const out = { ...r };
+      if (includeTrack) {
+        // [epochSeconds, lat, lon, altitude] -> named fields for consumers
+        out.track = JSON.parse(r.track_json).map(([t, lat, lon, alt]) => ({
+          timestamp: new Date(t * 1000).toISOString(), lat, lon, altitude: alt
+        }));
+        delete out.track_json;
+      }
+      return out;
+    });
   }
 
   /**

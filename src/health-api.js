@@ -517,6 +517,23 @@ class HealthDataService {
     });
 
     // Get Auto Export statistics
+    // GPS tracks for a day's outdoor workouts. Independent of OwnTracks, so
+    // this is what fills a gap when the background GPS trail is missing.
+    // ?summary=true omits the point arrays.
+    this.app.get('/api/apple-health/workout-routes', async (req, res) => {
+      try {
+        const date = req.query.date;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+          return res.status(400).json({ success: false, error: 'date=YYYY-MM-DD is required' });
+        }
+        const routes = await this.database.getWorkoutRoutes(date, req.query.summary !== 'true');
+        res.json({ success: true, data: { date, count: routes.length, routes } });
+      } catch (error) {
+        logger.error('Failed to get workout routes', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/apple-health/auto-export/stats', async (req, res) => {
       try {
         const stats = await this.database.getAutoExportStats();
