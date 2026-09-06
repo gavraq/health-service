@@ -20,9 +20,35 @@ class HealthDataService {
     this.scheduledJobs = {};
     this.lastParkrunSync = null;
 
+    // Serial queue for Auto Export parsing. Imports are acknowledged straight
+    // away and parsed here, one at a time — the app can fire several in quick
+    // succession and concurrent parses would contend for the SQLite write lock.
+    this.autoExportQueue = Promise.resolve();
+    this.autoExportPending = 0;
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
+  }
+
+  /**
+   * Queue a recorded Auto Export payload for background parsing.
+   *
+   * Deliberately fire-and-forget: the HTTP response has already gone back, so
+   * a failure here must be logged and recorded on the import row, never
+   * thrown. An unhandled rejection would take the process down and lose every
+   * queued import behind it.
+   */
+  queueAutoExportProcessing(importId, payload) {
+    this.autoExportPending += 1;
+    this.autoExportQueue = this.autoExportQueue
+      .then(() => this.database.processAutoExportImport(importId, payload))
+      .catch((error) => {
+        logger.error(`Background Auto Export processing failed for import ${importId}`, error);
+      })
+      .finally(() => {
+        this.autoExportPending -= 1;
+      });
   }
 
   setupMiddleware() {
@@ -66,7 +92,11 @@ class HealthDataService {
           parkrunSync: this.scheduledJobs.parkrunSync ? 'running' : 'stopped',
           lastParkrunSync: this.lastParkrunSync,
           nextParkrunSync: 'Every Saturday at 12:00 Europe/London'
-        }
+        },
+        // Imports acknowledged but not yet parsed. Should sit at 0 or 1; a
+        // number that keeps climbing means parsing is slower than the phone's
+        // export cadence.
+        autoExportQueueDepth: this.autoExportPending
       });
     });
 
@@ -295,19 +325,26 @@ class HealthDataService {
           timestamp: new Date().toISOString()
         });
 
-        // Store in database
-        const result = await this.database.saveAutoExportData(payload);
+        // Persist the payload (~80ms), then acknowledge. Parsing it into
+        // health_metrics takes ~94s for a 34k-point export, which is longer
+        // than the iPhone app's 60s request timeout — so answering only after
+        // the parse meant the app timed out on every import, never advanced
+        // its lastRunDate, and re-fired continuously. Acknowledging first
+        // makes response time independent of payload size.
+        const recorded = await this.database.recordAutoExportImport(payload);
 
-        res.json({
+        res.status(202).json({
           success: true,
-          message: 'Apple Health data received and processed',
+          message: 'Apple Health data received; processing in background',
           data: {
-            importId: result.importId,
-            metricsStored: result.metricsStored,
-            workoutsStored: result.workoutsStored,
-            timestamp: result.timestamp
+            importId: recorded.importId,
+            metricsReceived: recorded.metricsCount,
+            workoutsReceived: recorded.workoutsCount,
+            timestamp: recorded.timestamp
           }
         });
+
+        this.queueAutoExportProcessing(recorded.importId, payload);
       } catch (error) {
         logger.error('Auto Export webhook failed', error);
         res.status(500).json({

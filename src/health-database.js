@@ -423,33 +423,69 @@ class HealthDatabase {
     }
   }
 
-  async saveAutoExportData(payload) {
+  /**
+   * Record an incoming Auto Export payload and return immediately.
+   *
+   * This is the fast half of the ingest, split out so the webhook can
+   * acknowledge before the (much slower) parse. Writing the row takes ~80ms;
+   * parsing 34,000 data points out of it takes ~94s, which is longer than the
+   * iPhone app's 60s request timeout. The app was therefore timing out on
+   * every single import, never recording a completed run, and re-firing
+   * constantly — its lastRunDate sat at 2026-07-15 for seven weeks while data
+   * committed fine on this end. See processAutoExportImport().
+   *
+   * Status starts as 'pending' and is moved to 'success' or 'error' by the
+   * background pass.
+   */
+  async recordAutoExportImport(payload) {
+    if (!this.isReady) throw new Error('Database not initialized');
+
+    const timestamp = new Date().toISOString();
+    const metricsCount = payload.data?.metrics?.length || 0;
+    const workoutsCount = payload.data?.workouts?.length || 0;
+
+    const importSql = `
+      INSERT INTO apple_health_auto_export
+      (import_timestamp, source, metrics_count, workouts_count, payload_json, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const importResult = await this.runQuery(importSql, [
+      timestamp,
+      'health_auto_export',
+      metricsCount,
+      workoutsCount,
+      JSON.stringify(payload),
+      'pending',
+      timestamp
+    ]);
+
+    logger.info(`Recorded Auto Export import ID ${importResult.id}: metrics ${metricsCount}, workouts ${workoutsCount} (parse queued)`);
+    return { importId: importResult.id, metricsCount, workoutsCount, timestamp };
+  }
+
+  async setAutoExportStatus(importId, status, errorMessage = null) {
+    if (!this.isReady) return;
+    try {
+      await this.runQuery(
+        'UPDATE apple_health_auto_export SET status = ?, error_message = ? WHERE id = ?',
+        [status, errorMessage, importId]
+      );
+    } catch (e) {
+      logger.error(`Failed to set status ${status} on import ${importId}`, e);
+    }
+  }
+
+  /**
+   * The slow half: parse a recorded payload into health_metrics. Runs after the
+   * HTTP response has already gone back, so its duration is invisible to the
+   * phone.
+   */
+  async processAutoExportImport(importId, payload) {
     if (!this.isReady) throw new Error('Database not initialized');
 
     try {
       const timestamp = new Date().toISOString();
-      const metricsCount = payload.data?.metrics?.length || 0;
-      const workoutsCount = payload.data?.workouts?.length || 0;
-
-      // Store the import record
-      const importSql = `
-        INSERT INTO apple_health_auto_export
-        (import_timestamp, source, metrics_count, workouts_count, payload_json, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      const importValues = [
-        timestamp,
-        'health_auto_export',
-        metricsCount,
-        workoutsCount,
-        JSON.stringify(payload),
-        'success',
-        timestamp
-      ];
-
-      const importResult = await this.runQuery(importSql, importValues);
-      logger.info(`Stored Auto Export import with ID: ${importResult.id}, metrics: ${metricsCount}, workouts: ${workoutsCount}`);
 
       // Process and store individual metrics
       let metricsStored = 0;
@@ -543,41 +579,26 @@ class HealthDatabase {
         logger.warn('Auto Export payload prune failed (import itself succeeded)', pruneError);
       }
 
-      logger.info(`Processed Auto Export data: ${metricsStored} metric data points, ${workoutsStored} workouts`);
+      await this.setAutoExportStatus(importId, 'success');
+      logger.info(`Processed Auto Export import ${importId}: ${metricsStored} metric data points, ${workoutsStored} workouts`);
 
-      return {
-        importId: importResult.id,
-        metricsStored,
-        workoutsStored,
-        timestamp
-      };
+      return { importId, metricsStored, workoutsStored, timestamp };
     } catch (error) {
-      logger.error('Failed to save Auto Export data', error);
-
-      // Try to log the error import
-      try {
-        const errorSql = `
-          INSERT INTO apple_health_auto_export
-          (import_timestamp, source, metrics_count, workouts_count, payload_json, status, error_message, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-        await this.runQuery(errorSql, [
-          new Date().toISOString(),
-          'health_auto_export',
-          0,
-          0,
-          JSON.stringify(payload),
-          'error',
-          error.message,
-          new Date().toISOString()
-        ]);
-      } catch (logError) {
-        logger.error('Failed to log error import', logError);
-      }
-
+      logger.error(`Failed to process Auto Export import ${importId}`, error);
+      // The row already exists — mark it rather than inserting a second one.
+      await this.setAutoExportStatus(importId, 'error', error.message);
       await this.logSync('health_auto_export', 'error', 0, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Kept for callers that want the old blocking behaviour (tests, backfills).
+   * The webhook does not use this — see health-api.js.
+   */
+  async saveAutoExportData(payload) {
+    const recorded = await this.recordAutoExportImport(payload);
+    return this.processAutoExportImport(recorded.importId, payload);
   }
 
   /**
