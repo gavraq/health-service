@@ -232,6 +232,46 @@ class HealthDatabase {
     for (const indexSql of indexes) {
       await this.runQuery(indexSql);
     }
+
+    await this.ensureWorkoutRouteInstantKey();
+  }
+
+  /**
+   * UNIQUE(workout_start, workout_name) is not enough on its own.
+   *
+   * workout.start is rendered in the phone's timezone *at export time*, so a
+   * run recorded abroad and re-exported after coming home arrives as a
+   * different string for the same instant ("2026-08-03 08:28:57 -0500" vs
+   * "2026-08-03 14:28:57 +0100"). health_metrics has already accumulated ten
+   * such pairs from the Minnesota trip. Key on the parsed instant instead, so
+   * travel cannot duplicate a track.
+   */
+  async ensureWorkoutRouteInstantKey() {
+    const cols = await this.allQuery('PRAGMA table_info(workout_routes)');
+    if (!cols.some((c) => c.name === 'workout_start_utc')) {
+      await this.runQuery('ALTER TABLE workout_routes ADD COLUMN workout_start_utc INTEGER');
+      logger.info('Added workout_routes.workout_start_utc');
+    }
+
+    const stale = await this.allQuery(
+      'SELECT id, workout_start FROM workout_routes WHERE workout_start_utc IS NULL'
+    );
+    for (const row of stale) {
+      const t = Date.parse(row.workout_start);
+      if (Number.isNaN(t)) continue;
+      await this.runQuery('UPDATE workout_routes SET workout_start_utc = ? WHERE id = ?', [t, row.id]);
+    }
+    if (stale.length) logger.info(`Backfilled workout_start_utc on ${stale.length} route row(s)`);
+
+    try {
+      await this.runQuery(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_routes_instant ON workout_routes(workout_start_utc, workout_name)'
+      );
+    } catch (e) {
+      // Pre-existing duplicates would block the index. Report rather than
+      // silently carry on without the protection.
+      logger.error('Could not create unique index on workout_routes(workout_start_utc, workout_name)', e);
+    }
   }
 
   async saveParkrunProfile(profile) {
@@ -687,13 +727,16 @@ class HealthDatabase {
       ? workout.distance.qty
       : (typeof workout.distance === 'number' ? workout.distance : null);
 
+    const startUtc = Date.parse(workout.start);
+
     await this.runQuery(
       `INSERT OR REPLACE INTO workout_routes
-       (workout_start, workout_end, workout_name, workout_date, point_count,
-        distance_km, min_lat, min_lon, max_lat, max_lon, track_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (workout_start, workout_start_utc, workout_end, workout_name, workout_date,
+        point_count, distance_km, min_lat, min_lon, max_lat, max_lon, track_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        workout.start, workout.end, workout.name, workoutDate, track.length,
+        workout.start, Number.isNaN(startUtc) ? null : startUtc,
+        workout.end, workout.name, workoutDate, track.length,
         distanceKm, minLat, minLon, maxLat, maxLon,
         JSON.stringify(track), new Date().toISOString()
       ]

@@ -1137,12 +1137,36 @@ class HealthDataService {
         LIMIT ?
       `;
 
-      const rows = await new Promise((resolve, reject) => {
+      const rawRows = await new Promise((resolve, reject) => {
         this.database.db.all(query, [startDateStr, limit], (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);
         });
       });
+
+      // Drop timezone-duplicate workouts.
+      //
+      // metric_date is the workout start as the phone rendered it *at export
+      // time*, so a run recorded abroad and re-exported after coming home is
+      // stored twice: "2026-08-03 08:28:57 -0500" and
+      // "2026-08-03 14:28:57 +0100" are the same instant. health_metrics has
+      // no UNIQUE constraint, so both rows land, and every workout from the
+      // Minnesota trip was being counted twice — about 82km of phantom
+      // mileage in August, straight into the marathon training figures.
+      //
+      // Deduplicate on the parsed instant, keeping the first (most recent
+      // metric_date order) occurrence.
+      const seen = new Set();
+      const rows = rawRows.filter((row) => {
+        const instant = Date.parse(row.metric_date);
+        const key = `${Number.isNaN(instant) ? row.metric_date : instant}|${row.metric_type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (rows.length !== rawRows.length) {
+        logger.info(`Workouts: dropped ${rawRows.length - rows.length} timezone-duplicate row(s)`);
+      }
 
       // Process workouts into structured format (async so we can join HR for zones)
       const workouts = await Promise.all(rows.map(async row => {
