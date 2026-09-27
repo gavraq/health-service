@@ -10,6 +10,16 @@ const ParkrunClient = require('./parkrun-client');
 const HealthDatabase = require('./health-database');
 const logger = require('./logger');
 
+// One stored parkrun_results row in the shape both results routes return.
+function parkrunRow(r) {
+  return {
+    runDate: r.run_date, eventName: r.event_name, eventLocation: r.event_location,
+    finishTime: r.finish_time, position: r.position, ageGrade: r.age_grade,
+    isPersonalBest: !!r.is_personal_best, totalRunners: r.total_runners,
+    ageCategory: r.age_category, genderPosition: r.gender_position, runNumber: r.run_number
+  };
+}
+
 class HealthDataService {
   constructor() {
     this.app = express();
@@ -143,12 +153,7 @@ class HealthDataService {
       try {
         const { limit = 500, offset = 0 } = req.query;
         const rows = await this.database.getParkrunResults((process.env.PARKRUN_USERNAME || '1366335'), parseInt(limit), parseInt(offset));
-        const results = rows.map(r => ({
-          runDate: r.run_date, eventName: r.event_name, eventLocation: r.event_location,
-          finishTime: r.finish_time, position: r.position, ageGrade: r.age_grade,
-          isPersonalBest: !!r.is_personal_best, totalRunners: r.total_runners,
-          ageCategory: r.age_category, genderPosition: r.gender_position, runNumber: r.run_number
-        }));
+        const results = rows.map(parkrunRow);
         res.json({ success: true, data: results });
       } catch (error) {
         logger.error('Failed to fetch parkrun results', error);
@@ -211,9 +216,12 @@ class HealthDataService {
           });
         }
         
-        const allResults = await this.parkrunClient.getResults(1000, 0); // Get many results
-        const yearResults = allResults.filter(result => 
-          result.runDate && result.runDate.startsWith(year)
+        // Read the stored results, as /api/parkrun/results does. This used to ask the
+        // live parkrun client, which Cloudflare blocks, so every year answered
+        // 200 with totalRuns: 0 (found 2026-09-20) — a well-formed "you did not run".
+        const rows = await this.database.getParkrunResults((process.env.PARKRUN_USERNAME || '1366335'), 100000, 0);
+        const yearResults = rows.map(parkrunRow).filter(result =>
+          result.runDate && String(result.runDate).startsWith(year)
         );
         
         res.json({ 
@@ -284,18 +292,28 @@ class HealthDataService {
       }
     });
 
-    // Workouts endpoint - returns recent workout sessions
+    // Workouts endpoint - returns workout sessions
     // Query params:
     //   days (default 30) — lookback window
+    //   start_date, end_date (YYYY-MM-DD, inclusive, the date as recorded) — a fixed range
+    //     instead of the lookback, so a past date can be asked for; either may be
+    //     given alone
     //   limit (default 50) — max records
     //   include (comma-sep) — extras to compute per workout. Supported: "zones"
     //   max_hr — override for HR zone boundaries (default: DEFAULT_MAX_HR env, or 163)
     this.app.get('/api/apple-health/workouts', async (req, res) => {
       try {
-        const { days = 30, limit = 50, include = '', max_hr } = req.query;
+        const { days = 30, limit = 50, include = '', max_hr, start_date, end_date } = req.query;
+        for (const [name, value] of [['start_date', start_date], ['end_date', end_date]]) {
+          if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return res.status(400).json({ success: false, error: `${name} must be YYYY-MM-DD` });
+          }
+        }
         const includeZones = include.split(',').map(s => s.trim()).includes('zones');
         const maxHr = max_hr ? parseInt(max_hr) : (parseInt(process.env.DEFAULT_MAX_HR) || 163);
-        const workouts = await this.getWorkouts(parseInt(days), parseInt(limit), { includeZones, maxHr });
+        const workouts = await this.getWorkouts(parseInt(days), parseInt(limit), {
+          includeZones, maxHr, startDate: start_date, endDate: end_date
+        });
         res.json({ success: true, data: workouts });
       } catch (error) {
         logger.error('Failed to fetch workouts', error);
@@ -1113,13 +1131,24 @@ class HealthDataService {
   }
 
   async getWorkouts(days, limit, opts = {}) {
-    const { includeZones = false, maxHr = 163 } = opts;
+    const { includeZones = false, maxHr = 163, startDate, endDate } = opts;
     try {
-      logger.info(`Fetching workouts for ${days} days (limit: ${limit})${includeZones ? ` with zones at maxHr=${maxHr}` : ''}`);
+      logger.info(`Fetching workouts ${startDate || endDate ? `${startDate || '…'} → ${endDate || '…'}` : `for ${days} days`} (limit: ${limit})${includeZones ? ` with zones at maxHr=${maxHr}` : ''}`);
 
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      const startDateStr = cutoffDate.toISOString().split('T')[0];
+      let startDateStr = startDate;
+      if (!startDateStr) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - (endDate ? 36500 : days));
+        startDateStr = cutoffDate.toISOString().split('T')[0];
+      }
+      // metric_date is "YYYY-MM-DD HH:MM:SS +0100" (local time as recorded), so the
+      // day after end_date is an exclusive upper bound that string comparison gets right.
+      let beforeStr = '9999-12-31';
+      if (endDate) {
+        const after = new Date(`${endDate}T00:00:00Z`);
+        after.setUTCDate(after.getUTCDate() + 1);
+        beforeStr = after.toISOString().split('T')[0];
+      }
 
       // Query workout metrics (metric_type starts with 'workout_')
       // metric_date is stored as ISO timestamp string like "2026-01-04 14:27:38 +0000"
@@ -1133,12 +1162,13 @@ class HealthDataService {
         FROM health_metrics
         WHERE metric_type LIKE 'workout_%'
           AND metric_date >= ?
+          AND metric_date < ?
         ORDER BY metric_date DESC
         LIMIT ?
       `;
 
       const rawRows = await new Promise((resolve, reject) => {
-        this.database.db.all(query, [startDateStr, limit], (err, rows) => {
+        this.database.db.all(query, [startDateStr, beforeStr, limit], (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);
         });
