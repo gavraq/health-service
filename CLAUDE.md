@@ -88,7 +88,7 @@ npm run lint
 
 ## Deployment Pipeline
 
-**Code Flow**: Local Dev → GitHub → Raspberry Pi (Docker)
+**Code Flow**: Local Dev (Mac) → GitHub → Hostinger VPS (git pull → Docker build)
 
 ### 1. Local Development (Mac)
 ```bash
@@ -105,30 +105,34 @@ git push origin main
 - **URL**: https://github.com/gavraq/health-service
 - **Branch**: main
 
-### 3. Production Deployment (Raspberry Pi)
+### 3. Production Deployment (Hostinger VPS)
+
+Prod is a git checkout of `main` at `/home/gavin/apps/health-service` on the VPS (ZeroTier only). The
+container binds `127.0.0.1:3001`; the public door is `https://health.gavinslater.co.uk`.
+
 ```bash
-# SSH to Pi, navigate to service directory
-cd ~/docker/health-service
-
-# Pull latest changes from GitHub
+ssh gavin@192.168.195.51
+cd /home/gavin/apps/health-service
 git pull origin main
+docker compose build --no-cache
+docker compose up -d
 
-# Rebuild and restart Docker container
-docker-compose build --no-cache
-docker-compose up -d
-
-# Verify deployment
-docker-compose ps
-docker-compose logs -f health-service
+# Verify — assert something only the new code produces, not just a 200
+docker compose ps
+docker compose logs -f health-service
+curl -s https://health.gavinslater.co.uk/health
 ```
+
+The Raspberry Pi deployment (`~/docker/health-service`) is **gone** — the service moved to the VPS on
+2026-08-26 and the Pi was retired. Current hosting record: `life-vault/docs/services/personal/Health Service.md`.
 
 ### Docker Commands Reference
 ```bash
-docker-compose up -d           # Start in background
-docker-compose down            # Stop containers
-docker-compose ps              # Check status
-docker-compose logs -f         # Follow logs
-docker-compose build --no-cache # Force rebuild
+docker compose up -d           # Start in background
+docker compose down            # Stop containers
+docker compose ps              # Check status
+docker compose logs -f         # Follow logs
+docker compose build --no-cache # Force rebuild
 ```
 
 ## API Quick Reference
